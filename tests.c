@@ -90,6 +90,13 @@ i_combinator(void) {
     return lambda(x, var(x));
 }
 
+// Suggested in <https://github.com/etiams/lambdaspeed/issues/2>.
+static struct lambda_term *
+skk_test(void) {
+    return applicator(
+        applicator(s_combinator(), k_combinator()), k_combinator());
+}
+
 static struct lambda_term *
 sksk_test(void) {
     return applicator(
@@ -712,6 +719,8 @@ main(void) {
 
     puts("Running the test cases...");
 
+    // TODO: fix the use-after-poison error.
+    // TEST_CASE(skk_test, "(λ 0)");
     TEST_CASE(sksk_test, "(λ (λ 1))");
     TEST_CASE(ski_kis_test, "(λ 0)");
     TEST_CASE(sii_test, "(λ 0)");
