@@ -43,6 +43,9 @@ jobs:
       - name: Run clang-tidy
         run: clang-tidy lambdaspeed.c
 
+      - name: Run GCC -fanalyzer
+        run: gcc lambdaspeed.c -fanalyzer
+
   benchmark:
     runs-on: ubuntu-latest
 
