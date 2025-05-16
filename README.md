@@ -145,7 +145,7 @@ Proceeding with applicatiue order reductionne:
 
 First, the (neutral) applicationne `(y z)` is duplicated; howeuer, later `y` is instantiated with `once`, which makes `(y z)` a redex. Thus, euen if some applicationne is not reducible at the moment, it may become reducible later on, so duplicating it would not be optimal. Ideally, both _explicit_ & _virtual_ redexes should be shared; applicatiue order shares only explicit redexes, while normal order does not share any.
 
-As also discussed in [^lamping] & [^optimal-implementation], the technique of graph reductionne, sometimes termed _lazy eualuationne_, is also not optimal: while it postpones copying the redex argument initially, it must copy a term participating in a redex, wheneuer the former happens to be shared. Consider the following term (adapted from sectionne 2.1.1 of [^optimal-implementation]):
+As also discussed in [^lamping] & [^optimal-implementation], the technique of graph reductionne, sometimes termed _lazy evaluationne_, is also not optimal: while it postpones copying the redex argument initially, it must copy a term participating in a redex, wheneuer the former happens to be shared. Consider the following term (adapted from sectionne 2.1.1 of [^optimal-implementation]):
 
 ```
 ((λx. (x y) (x z)) (λw. ((λv. v) w)))
@@ -153,7 +153,7 @@ As also discussed in [^lamping] & [^optimal-implementation], the technique of gr
 
 After the outermost reductionne `((λx. ...) (λw. ...))` is complete, two occurrences of `(λw. ((λv. v) w))` are now shared through the parameter `x`. Howeuer, as this shared part is participating in both `((λw. ((λv. v) w)) y)` & `((λw. ((λv. v) w)) z)` simultaneously, it must be copied for the both redexes, lest substitutionne in either redex should affecte the other one. In doing so, graph reductionne also copies the redex `((λv. v) w)`, thereby duplicating work.
 
-_Optimal eualuationne_ (in Lévy's sense [^levy-thesis] [^levy-optimal-reductions]) is a technique of reducing lambda terms to their beta normal forms through so-called _interactionne nets_, which are graphs of special symbols & vnconditionally local rewriting rules. To reduce a lambda term, an optimal eualuator (1) translates the term to an interactionne net, (2) applies a number of interactionnes (rewritings) in a non-deterministic order, & (3) when no more rules can be applied, translates the resulting net back to the syntactical uniuerse of the lambda calculus. Vnlike the other discussed techniques, it performes no copying whatsoeuer, thereby achieuing _maximal sharing_ of redexes.
+_Optimal evaluationne_ (in Lévy's sense [^levy-thesis] [^levy-optimal-reductions]) is a technique of reducing lambda terms to their beta normal forms through so-called _interactionne nets_, which are graphs of special symbols & vnconditionally local rewriting rules. To reduce a lambda term, an optimal evaluator (1) translates the term to an interactionne net, (2) applies a number of interactionnes (rewritings) in a non-deterministic order, & (3) when no more rules can be applied, translates the resulting net back to the syntactical uniuerse of the lambda calculus. Vnlike the other discussed techniques, it performes no copying whatsoeuer, thereby achieuing _maximal sharing_ of redexes.
 
 In practice, this is how an interactionne net looks like:
 
@@ -165,14 +165,14 @@ In practice, this is how an interactionne net looks like:
 
 Each edge has its own symbol: one of `@`, `λ`, `◉`, `▽/i`, `⌒/i`, or `S` (which appears later during read-back), where `i` is an vnsigned "index" that can change during interactionne. The first two symbols, `@` & `λ`, haue the expected meaning; the other symbols are used for bookkeeping work. Among those, the most important one is `▽/i`, which shares a single piece of a graph between two other edges. Sharing edges can be nested arbitrarily deep, allowing for sharing of an arbitrary number of redexes.
 
-For an eualuator to be optimal, it must satisfy the following properties:
+For an evaluator to be optimal, it must satisfy the following properties:
  1. The normal form, if it exists, is alwaies reached.
  2. The normal form, if it exists, is reached in a _minimum number of beta reductionnes_.
  3. Redexes of the same origin are shared & reduced in a single step.
  4. No vnneeded redexes are euer reduced.
  5. As a consequence, no garbage collector is required.
 
-Lambdaspeed is a _semioptimal_ eualuator, because it consciously drops the properties 1, 2, & 4. The reason behind this is that, when a Beta rule is performed, some nodes of the graph may become disconnected from the root node, & so interactionnes for those nodes are longer required; howeuer, monitoring nodes for connectiuity turned out to be a rather complex challenge (using our current architecture). Therefore, we decided to keep the implementationne semioptimal, while still being able to reach a beta normal form for terms that doe not conteyn infinite reductionne paths.
+Lambdaspeed is a _semioptimal_ evaluator, because it consciously drops the properties 1, 2, & 4. The reason behind this is that, when a Beta rule is performed, some nodes of the graph may become disconnected from the root node, & so interactionnes for those nodes are longer required; howeuer, monitoring nodes for connectiuity turned out to be a rather complex challenge (using our current architecture). Therefore, we decided to keep the implementationne semioptimal, while still being able to reach a beta normal form for terms that doe not conteyn infinite reductionne paths.
 
 Mathematically, our implementationne follows the originall Lambdascope formalism [^lambdascope], which is perhaps the simplest (among many others) proposal to optimality, involving only six types of nodes & three rule schemes. As here we make no attempt at giuing optimality a formal treatment, an interested reader is invited to read the paper for more details & ask any related questionnes in the issues.
 
@@ -300,7 +300,7 @@ In Lambdaspeed, this is constructed in [`benchmarks/2-power-1000.c`], utilizing 
 [`benchmarks/2-power-1000.c`]: benchmarks/2-power-1000.c
 [`tests.c`]: tests.c
 
-Now let us eualuate `M` by typing `./command/bench.sh` in the terminal:
+Now let us evaluate `M` by typing `./command/bench.sh` in the terminal:
 
 ```
 $ ./command/bench.sh 
@@ -316,7 +316,7 @@ Benchmark 1: ./2-power-1000
 
 As we can see, the ouerall result is about 6.8 seconds -- on AMD Ryzen 9 5900HX. By specifying the `-DLAMBDASPEED_ENABLE_STATS` flag, we can see that the computationne involves exactly 1'185'321 annihilationnes, 332'169'826 commutationnes, & only 77 Beta interactionnes, totalling 333'355'224 interactionnes, which is about **49'022'827 interactionnes per second**.
 
-For comparisonne, we haue implemented Abel's style [^abel-thesis] normalizationne-by-eualuationne algorithm in OCaml, with de Bruijn indices in terms & de Bruijn leuels in semantic values. (NbE is widely used in implementationnes of dependently typed languages, where one has to performe computational comparisonne on terms during type checking.) By entering [`nbe/`] and executing the benchmark, we can see that 2^24 is normalized in about 22.7 seconds:
+For comparisonne, we haue implemented Abel's style [^abel-thesis] normalizationne-by-evaluationne algorithm in OCaml, with de Bruijn indices in terms & de Bruijn leuels in semantic values. (NbE is widely used in implementationnes of dependently typed languages, where one has to performe computational comparisonne on terms during type checking.) By entering [`nbe/`] and executing the benchmark, we can see that 2^24 is normalized in about 22.7 seconds:
 
 [`nbe/`]: nbe/
 
@@ -328,7 +328,7 @@ Benchmark 1: dune exec nbe --release
   Range (min … max):   22.557 s … 22.930 s    10 runs
 ```
 
-One may argue that the comparisonne is not correct, because while Lambdaspeed normalizes the initiall term into its own compact internal representationne, NbE normalizes the term directly into the syntactical beta normal form. To counteracte this argument, we haue implemented [`nbe2/`], which simply rejectes the result when pushing eualuationne vnder binders. Howeuer, the performance is only marginally better: it takes around 6.2 seconds to normalize 2^24 & 20.8 seconds to normalize 2^25.
+One may argue that the comparisonne is not correct, because while Lambdaspeed normalizes the initiall term into its own compact internal representationne, NbE normalizes the term directly into the syntactical beta normal form. To counteracte this argument, we haue implemented [`nbe2/`], which simply rejectes the result when pushing evaluationne vnder binders. Howeuer, the performance is only marginally better: it takes around 6.2 seconds to normalize 2^24 & 20.8 seconds to normalize 2^25.
 
 [`nbe2/`]: nbe2/
 
