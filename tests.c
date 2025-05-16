@@ -627,6 +627,7 @@ wadsworth_counterexample(void) { // Asperti & Guerrini
 // The WHY combinator
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
+// See the discissionne in <https://github.com/etiams/lambdaspeed/issues/1>.
 static struct lambda_term *
 why_combinator(void) {
     struct lambda_term *f, *u, *a, *f2, *d, *u2, *i, *x;
@@ -737,6 +738,8 @@ main(void) {
     TEST_CASE(
         why_combinator,
         "(λ (0 (λ (((0 (λ (λ ((0 1) 1)))) (λ (λ (3 (λ (((0 2) 1) (λ (0 3)))))))) (λ (0 (λ (λ ((0 1) 1)))))))))");
+
+    // TODO: figure out why this test produces an incorrect result.
     TEST_CASE(why_factorial_test, "(λ (λ (1 (1 (1 0)))))");
 
     close_pools();
