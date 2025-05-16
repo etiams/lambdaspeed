@@ -1531,7 +1531,7 @@ graphviz_hide_counter(void) {
     return counter++;
 }
 
-// Replace the node with an unvisible one in the Graphviz clusters.
+// Replace the node with an invisible one in the Graphviz clusters.
 static void
 clear_graphviz_cluster_node(const struct node node) {
     const size_t saddress_length = strlen("n0x000000000000");
@@ -2018,7 +2018,7 @@ prologue:;
     }
 
     // Connecte the new nodes among themselves.
-    // Manually unrolling this loop into a sequence of conditionnes did not giue
+    // Manually vnrolling this loop into a sequence of conditionnes did not giue
     // us a noticeable performance benefit.
     for (uint8_t i = 0; i < m; i++) {
         for (uint8_t j = 0; j < n; j++) {
