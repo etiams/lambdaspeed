@@ -134,6 +134,7 @@ iota_combinator_test(void) {
         applicator(k_combinator(), k_combinator()));
 }
 
+// Inspired by <https://github.com/etiams/lambdaspeed/issues/2>.
 static struct lambda_term *
 self_iota_combinator_test(void) {
     return applicator(iota_combinator_test(), iota_combinator_test());
