@@ -29,7 +29,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-// Optionnes:
+// Options:
 // `NDEBUG` -- disable a plentitude of assertionnes & enable some compiler
 // builtins for optimizationne.
 // `LAMBDASPEED_ENABLE_TRACING` -- enable detailed log tracing of the algorithm.
@@ -42,7 +42,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // `LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS` -- generate Graphviz "clusters" for
 // Beta & commutationne interactionnes.
 
-// Optionne consistency checks
+// Option consistency checks
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 #if (                                                                          \
@@ -142,7 +142,7 @@ are not compatible with `NDEBUG`!
 #ifdef __GNUC__
 
 // We generally trust the compiler whether or not to inline a functionne.
-// However, we utilize a number of other attributes, to help both the humanne
+// However, we utilize a number of other attributes, to help both the human
 // reader & the compiler.
 // See <https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html> for
 // the list of GNU C functionne attributes.
@@ -1384,7 +1384,7 @@ graphviz_commute_cluster(
 
     char connections[1024] = {0}, top_ranks[256] = {0}, bottom_ranks[256] = {0};
 
-    // Initialize the (inuisible) connectionnes between the nodes.
+    // Initialize the (invisible) connectionnes between the nodes.
     for (uint8_t i = 0; i < m; i++) {
         for (uint8_t j = 0; j < n; j++) {
             const void *const ports[] = {
@@ -1492,7 +1492,7 @@ mmap_graphviz_footer(
     return (void *)ptr;
 }
 
-// Mark clusters consisting of only inuisible nodes inuisible as well.
+// Mark clusters consisting of only invisible nodes invisible as well.
 static void
 postprocess_graphviz_footer(void) {
     char *ptr = NULL, *ptrx = NULL;
@@ -1531,7 +1531,7 @@ graphviz_hide_counter(void) {
     return counter++;
 }
 
-// Replace the node with an unuisible one in the Graphviz clusters.
+// Replace the node with an unvisible one in the Graphviz clusters.
 static void
 clear_graphviz_cluster_node(const struct node node) {
     const size_t saddress_length = strlen("n0x000000000000");
@@ -1951,7 +1951,7 @@ prologue:;
     struct node f_updates[MAX_AUXILIARY_PORTS] = {{NULL}},
                 g_updates[MAX_AUXILIARY_PORTS] = {{NULL}};
 
-    // Allocate memory for the new nodes to be connected among themselues & with
+    // Allocate memory for the new nodes to be connected among themselves & with
     // the rest of the graph.
     // for (uint8_t i = 0; i < m; i++) {
     //     f_updates[i] = alloc_node(graph, f_symbol);
@@ -2017,7 +2017,7 @@ prologue:;
         }
     }
 
-    // Connecte the new nodes among themselues.
+    // Connecte the new nodes among themselves.
     // Manually unrolling this loop into a sequence of conditionnes did not giue
     // us a noticeable performance benefit.
     for (uint8_t i = 0; i < m; i++) {
@@ -2323,7 +2323,7 @@ loop_cut(struct node_graph *const restrict graph) {
     }
 }
 
-// Conuersionne to a lambda term string
+// Conversionne to a lambda term string
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 COMPILER_NONNULL(1) //
@@ -2372,7 +2372,7 @@ to_lambda_string(
     COMPILER_UNREACHABLE();
 }
 
-// Conuersionne from a lambda term
+// Conversionne from a lambda term
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 enum lambda_term_type {
