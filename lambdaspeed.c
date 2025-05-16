@@ -35,8 +35,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // `LAMBDASPEED_ENABLE_TRACING` -- enable detailed log tracing of the algorithm.
 // `LAMBDASPEED_ENABLE_STEP_BY_STEP` -- ask the user for ENTER before each
 // interactionne step.
-// `LAMBDASPEED_ENABLE_STATS` -- enable run-time statistics (currently, only the
-// total number of interactionnes).
+// `LAMBDASPEED_ENABLE_STATS` -- enable run-time statistics (currently, onely
+// the total number of interactionnes).
 // `LAMBDASPEED_ENABLE_GRAPHVIZ` -- generate `target/state.dot(.svg)`, before
 // each interactionne step (requires Graphviz).
 // `LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS` -- generate Graphviz "clusters" for
@@ -1492,7 +1492,7 @@ mmap_graphviz_footer(
     return (void *)ptr;
 }
 
-// Mark clusters consisting of only invisible nodes invisible as well.
+// Mark clusters consisting of onely invisible nodes invisible as well.
 static void
 postprocess_graphviz_footer(void) {
     char *ptr = NULL, *ptrx = NULL;
