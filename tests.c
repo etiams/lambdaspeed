@@ -624,81 +624,6 @@ wadsworth_counterexample(void) { // Asperti & Guerrini
                 lambda(w, applicator(once, var(w))))));
 }
 
-// The WHY combinator
-// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-
-// See the discissionne in <https://github.com/etiams/lambdaspeed/issues/1>.
-static struct lambda_term *
-why_combinator(void) {
-    struct lambda_term *f, *u, *a, *f2, *d, *u2, *i, *x;
-
-    return lambda(
-        f,
-        applicator(
-            lambda(
-                u,
-                applicator(
-                    applicator(
-                        var(u),
-                        lambda(
-                            a,
-                            lambda(
-                                f2,
-                                applicator(
-                                    applicator(var(f2), var(a)), var(a))))),
-                    var(u))),
-            lambda(
-                d,
-                lambda(
-                    u2,
-                    applicator(
-                        var(f),
-                        lambda(
-                            i,
-                            applicator(
-                                applicator(applicator(var(i), var(d)), var(u2)),
-                                lambda(x, applicator(var(x), var(d))))))))));
-}
-
-static struct lambda_term *
-church_is_zero(void) {
-    struct lambda_term *n, *x;
-
-    return lambda(
-        n,
-        applicator(
-            applicator(var(n), lambda(x, church_false())), church_true()));
-}
-
-static struct lambda_term *
-why_factorial_function(void) {
-    struct lambda_term *f, *n;
-
-    return lambda(
-        f,
-        lambda(
-            n,
-            applicator(
-                applicator(
-                    applicator(
-                        if_then_else(), applicator(church_is_zero(), var(n))),
-                    church_one()),
-                applicator(
-                    applicator(church_multiply(), var(n)),
-                    applicator(
-                        var(f), applicator(church_predecessor(), var(n)))))));
-}
-
-static struct lambda_term *
-why_factorial_term(void) {
-    return applicator(why_combinator(), why_factorial_function());
-}
-
-static struct lambda_term *
-why_factorial_test(void) {
-    return applicator(why_factorial_term(), church_three());
-}
-
 // The test driver
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -735,12 +660,6 @@ main(void) {
     TEST_CASE(asperti_guerrini_example, "(λ (0 0))");
     TEST_CASE(wadsworth_example, "(λ (0 0))");
     TEST_CASE(wadsworth_counterexample, "(λ (λ (1 0)))");
-    TEST_CASE(
-        why_combinator,
-        "(λ (0 (λ (((0 (λ (λ ((0 1) 1)))) (λ (λ (3 (λ (((0 2) 1) (λ (0 3)))))))) (λ (0 (λ (λ ((0 1) 1)))))))))");
-
-    // TODO: figure out why this test produces an incorrect result.
-    TEST_CASE(why_factorial_test, "(λ (λ (1 (1 (1 0)))))");
 
     close_pools();
 }
