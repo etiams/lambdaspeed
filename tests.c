@@ -134,6 +134,11 @@ iota_combinator_test(void) {
         applicator(k_combinator(), k_combinator()));
 }
 
+static struct lambda_term *
+self_iota_combinator_test(void) {
+    return applicator(iota_combinator_test(), iota_combinator_test());
+}
+
 // The B, C, W combinators
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -726,6 +731,8 @@ main(void) {
     TEST_CASE(sii_test, "(λ 0)");
     TEST_CASE(
         iota_combinator_test, "(λ ((0 (λ (λ (λ ((2 0) (1 0)))))) (λ (λ 1))))");
+    // TODO: fix the use-after-poison error.
+    // TEST_CASE(self_iota_combinator_test, "(λ 0)");
     TEST_CASE(bcw_test, "(λ (λ (λ ((2 0) (1 0)))))");
     TEST_CASE(boolean_test, "(λ (λ 1))");
     TEST_CASE(church_two_two_test, "(λ (λ (1 (1 (1 (1 0))))))");
