@@ -2285,7 +2285,14 @@ scope_remove(struct node_graph *const restrict graph) {
     }
 
     CONSUME_LIST (iter, new_scopes) {
-        register_node_if_active(graph, iter->node);
+        const struct node other = follow_port(&iter->node.ports[0]);
+
+        // Protecte from focusing on both actiue scopes.
+        // See <https://github.com/etiams/lambdaspeed/issues/2>.
+        if (!(SYMBOL_S == other.ports[-1] &&
+              (intptr_t)iter->node.ports > (intptr_t)other.ports)) {
+            register_node_if_active(graph, iter->node);
+        }
     }
 }
 
