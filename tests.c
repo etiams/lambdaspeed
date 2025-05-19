@@ -258,7 +258,7 @@ boolean_test(void) {
         church_false());
 }
 
-// Church numeraux
+// Church numerals
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 static struct lambda_term *
@@ -311,7 +311,7 @@ church_five(void) {
                         applicator(var(f), applicator(var(f), var(x))))))));
 }
 
-// The originall showcase test from the Lambdascope paper.
+// The original showcase test from the Lambdascope paper.
 static struct lambda_term *
 church_two_two_test(void) {
     return applicator(church_two(), church_two());
@@ -404,7 +404,7 @@ church_five_predecessor2x(void) {
     return applicator(church_predecessor2x(), church_five());
 }
 
-// Iteratiue factorial
+// Iterative factorial
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 static struct lambda_term *
@@ -508,7 +508,7 @@ church_list_sum_test(void) {
         applicator(church_list_1_2_3(), church_add()), church_zero());
 }
 
-// Scott numeraux
+// Scott numerals
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 static struct lambda_term *
@@ -590,7 +590,7 @@ static struct lambda_term *
 church_is_one(void) {
     struct lambda_term *n;
 
-    // Assuming that `n` is positiue.
+    // Assuming that `n` is positive.
     return lambda(
         n,
         applicator(church_is_zero(), applicator(church_predecessor(), var(n))));
@@ -660,7 +660,7 @@ y_fibonacci_test(void) {
 // The WHY combinator
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-// See the discissionne in <https://github.com/etiams/lambdaspeed/issues/1>.
+// See the discission in <https://github.com/etiams/lambdaspeed/issues/1>.
 static struct lambda_term *
 why_combinator(void) {
     struct lambda_term *f, *u, *a, *f2, *d, *u2, *i, *x;

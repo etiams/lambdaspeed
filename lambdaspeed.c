@@ -31,16 +31,16 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Options:
 // `NDEBUG` -- disable a plentitude of assertionnes & enable some compiler
-// builtins for optimizationne.
+// builtins for micro-optimization.
 // `LAMBDASPEED_ENABLE_TRACING` -- enable detailed log tracing of the algorithm.
 // `LAMBDASPEED_ENABLE_STEP_BY_STEP` -- ask the user for ENTER before each
-// interactionne step.
+// interaction step.
 // `LAMBDASPEED_ENABLE_STATS` -- enable run-time statistics (currently, onely
 // the total number of interactionnes).
-// `LAMBDASPEED_ENABLE_GRAPHVIZ` -- generate `target/state.dot(.svg)`, before
-// each interactionne step (requires Graphviz).
-// `LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS` -- generate Graphviz "clusters" for
-// Beta & commutationne interactionnes.
+// `LAMBDASPEED_ENABLE_GRAPHVIZ` -- generate `target/state.dot(.svg)` before
+// each interaction step (requires Graphviz).
+// `LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS` -- generate blue rectangular
+// containers for Beta & commutation interactionnes.
 
 // Option consistency checks
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -104,7 +104,7 @@ are not compatible with `NDEBUG`!
 #define STRINGIFY_PRIMITIVE(...) #__VA_ARGS__
 #define STRINGIFY(...)           STRINGIFY_PRIMITIVE(__VA_ARGS__)
 
-// Compiler functionalitie detectionne
+// Compiler functionalitie detection
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 #define STANDARD_C99_OR_HIGHER (__STDC_VERSION__ >= 199901L)
@@ -144,11 +144,11 @@ are not compatible with `NDEBUG`!
 
 #ifdef __GNUC__
 
-// We generally trust the compiler whether or not to inline a functionne.
+// We generally trust the compiler whether or not to inline a function.
 // However, we utilize a number of other attributes, to help both the human
 // reader & the compiler.
 // See <https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html> for
-// the list of GNU C functionne attributes.
+// the list of GNU C function attributes.
 // Note: please, keep `.clang-format` up-to-date with the macros below.
 
 #define COMPILER_UNUSED             __attribute__((unused))
@@ -196,7 +196,7 @@ are not compatible with `NDEBUG`!
 #endif
 
 #define COMPILER_IGNORE                /* empty, object-like */
-#define COMPILER_IGNORE_WITH_ARGS(...) /* empty, functionne-like */
+#define COMPILER_IGNORE_WITH_ARGS(...) /* empty, function-like */
 
 #ifndef COMPILER_UNUSED
 #define COMPILER_UNUSED COMPILER_IGNORE
@@ -273,7 +273,7 @@ are not compatible with `NDEBUG`!
 // Debug assertionnes
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-// Assertionnes that are checked at programme run-time.
+// Assertionnes that are checked at program run-time.
 #if defined(__GNUC__) && defined(NDEBUG)
 #define XASSERT(condition) (!(condition) ? __builtin_unreachable() : (void)0)
 #else
@@ -424,6 +424,7 @@ symbol_is_in_range(const struct symbol_range range, const uint64_t symbol) {
 
 // clang-format off
 #define SYMBOL_RANGE(min, max) ((struct symbol_range){min, max})
+#define SYMBOL_RANGE_1(symbol) SYMBOL_RANGE(symbol, symbol)
 #define DUPLICATOR_RANGE \
     SYMBOL_RANGE(SYMBOL_DUPLICATOR(UINT64_C(0)), MAX_DUPLICATOR_INDEX)
 #define DELIMITER_RANGE \
@@ -568,7 +569,7 @@ bump_index(const uint64_t symbol) {
     }
 }
 
-// O(1) pool allocationne & deallocationne
+// O(1) pool allocation & deallocation
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 COMPILER_MALLOC(free, 1) COMPILER_RETURNS_NONNULL COMPILER_WARN_UNUSED_RESULT //
@@ -703,7 +704,7 @@ xcalloc(const size_t n, const size_t size) {
         XASSERT(self->buckets);                                                \
         assert(object);                                                        \
                                                                                \
-        object--; /* returne to the symbol addresse */                         \
+        object--; /* return to the symbol address */                           \
         union prefix##_chunk *const freed = (union prefix##_chunk *)object;    \
         CLEAR_MEMORY(freed);                                                   \
         freed->next = self->next_free_chunk;                                   \
@@ -856,7 +857,7 @@ inline static bool
 is_interacting_with(const struct node f, const struct node g) {
     XASSERT(f.ports), XASSERT(g.ports);
 
-    // Supposing that `g` is deriued from `f` by `follow_port(&f.ports[0])`.
+    // Supposing that `g` is derived from `f` by `follow_port(&f.ports[0])`.
     return DECODE_ADDRESS(g.ports[0]) == &f.ports[0];
 }
 
@@ -947,7 +948,7 @@ is_visited(
 // Graphs (nets) of nodes
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-struct focus {
+struct multifocus {
     struct node initial[8192];
     struct node_list *rest;
     size_t count;
@@ -955,7 +956,7 @@ struct focus {
 
 COMPILER_NONNULL(1) COMPILER_HOT COMPILER_FLATTEN //
 static void
-focus_on(struct focus *const restrict focus, const struct node node) {
+focus_on(struct multifocus *const restrict focus, const struct node node) {
     assert(focus);
     XASSERT(node.ports);
 
@@ -972,7 +973,7 @@ focus_on(struct focus *const restrict focus, const struct node node) {
 
 COMPILER_NONNULL(1) COMPILER_HOT COMPILER_FLATTEN //
 static struct node
-unfocus(struct focus *const restrict focus) {
+unfocus(struct multifocus *const restrict focus) {
     assert(focus);
     XASSERT(focus->count > 0);
 
@@ -988,7 +989,7 @@ unfocus(struct focus *const restrict focus) {
 
 struct node_graph {
     const struct node root;
-    struct focus *annihilations, *commutations, *betas;
+    struct multifocus *annihilations, *commutations, *betas;
     uint64_t current_phase;
     bool is_reading_back;
 
@@ -1033,7 +1034,7 @@ alloc_node(struct node_graph *const restrict graph, const uint64_t symbol) {
     assert(graph);
     XASSERT(SYMBOL_ROOT != symbol);
 
-    // While it might seem that preallocationne caches can increase performance,
+    // While it might seem that preallocation caches can increase performance,
     // in fact, they introduced almost a 2x slowdown.
 
     uint64_t *ports = NULL;
@@ -1179,13 +1180,13 @@ register_node_if_active(
     register_active_pair(graph, f, g);
 }
 
-// Graphviz graph generationne
+// Graphviz graph generation
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 #ifdef LAMBDASPEED_ENABLE_GRAPHVIZ
 
 // We use glibc-specific functionalitie for convenience. Windows support is not
-// & will neuer be planned.
+// & will never be planned.
 STATIC_ASSERT(__GNUC__ >= 1, "GNU C is required!");
 
 #define GRAPHVIZ_INDENT             "    "
@@ -1312,71 +1313,61 @@ graphviz_edge_tailport(
     const bool is_reading_back) {
     XASSERT(node.ports);
 
-    static char buffer[4] = {0};
+    const uint64_t symbol = node.ports[-1];
 
-    switch (node.ports[-1]) {
+    switch (symbol) {
     case SYMBOL_ROOT:
         switch (i) {
-        case 0: sprintf(buffer, "n"); goto exit;
-        case 1: sprintf(buffer, "s"); goto exit;
+        case 0: return "n";
+        case 1: return "s";
         default: COMPILER_UNREACHABLE();
         }
-        goto exit;
     case SYMBOL_APPLICATOR:
         if ((is_reading_back ? 0 : 1) == i) {
-            sprintf(buffer, "n");
+            return "n";
         } else if ((is_reading_back ? 2 : 0) == i) {
-            sprintf(buffer, "s");
+            return "s";
         } else if ((is_reading_back ? 1 : 2) == i) {
-            sprintf(buffer, "e");
+            return "e";
         } else {
             COMPILER_UNREACHABLE();
         }
-        goto exit;
     case SYMBOL_LAMBDA:
         switch (i) {
-        case 0: sprintf(buffer, "n"); goto exit;
-        case 1: sprintf(buffer, "e"); goto exit;
-        case 2: sprintf(buffer, "s"); goto exit;
+        case 0: return "n";
+        case 1: return "e";
+        case 2: return "s";
         default: COMPILER_UNREACHABLE();
         }
-        goto exit;
     case SYMBOL_ERASER:
         switch (i) {
-        case 0: sprintf(buffer, "s"); goto exit;
+        case 0: return "s";
         default: COMPILER_UNREACHABLE();
         }
-        goto exit;
     case SYMBOL_S:
         switch (i) {
-        case 0: sprintf(buffer, "n"); goto exit;
-        case 1: sprintf(buffer, "s"); goto exit;
+        case 0: return "n";
+        case 1: return "s";
         default: COMPILER_UNREACHABLE();
         }
-        goto exit;
-    default: break;
-    }
-
-    if (node.ports[-1] <= MAX_DUPLICATOR_INDEX) {
+    default:
+        if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
+        else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
+        else COMPILER_UNREACHABLE();
+    duplicator:
         switch (i) {
-        case 0: sprintf(buffer, "s"); goto exit;
-        case 1: sprintf(buffer, "nw"); goto exit;
-        case 2: sprintf(buffer, "ne"); goto exit;
+        case 0: return "s";
+        case 1: return "nw";
+        case 2: return "ne";
         default: COMPILER_UNREACHABLE();
         }
-    }
-    if (node.ports[-1] <= MAX_DELIMITER_INDEX) {
+    delimiter:
         switch (i) {
-        case 0: sprintf(buffer, "s"); goto exit;
-        case 1: sprintf(buffer, "n"); goto exit;
+        case 0: return "s";
+        case 1: return "n";
         default: COMPILER_UNREACHABLE();
         }
     }
-
-    COMPILER_UNREACHABLE();
-
-exit:
-    return buffer;
 }
 
 #ifdef LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS
@@ -1724,7 +1715,7 @@ graphviz(
 
 #ifdef LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS
     if (NULL == graphviz_footer_fp) {
-        // The file descriptor will be closed upon programme terminationne.
+        // The file descriptor will be closed upon program termination.
         if (NULL == (graphviz_footer_fp = tmpfile())) {
             perror("tmpfile"), abort();
         }
@@ -1813,7 +1804,7 @@ wait_for_user(const struct node_graph graph) {
 
 #endif // !defined(NDEBUG) && defined(LAMBDASPEED_ENABLE_STEP_BY_STEP)
 
-// Mark & sweep garbage collectionne
+// Mark & sweep garbage collection
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 COMPILER_NONNULL(1) COMPILER_COLD //
@@ -1825,8 +1816,8 @@ collect_garbage(
     XASSERT(node.ports);
     XASSERT(!graph->is_reading_back);
 
-    struct focus *const stack = xcalloc(1, sizeof *stack);
-    struct focus *const history = xcalloc(1, sizeof *history);
+    struct multifocus *const stack = xcalloc(1, sizeof *stack);
+    struct multifocus *const history = xcalloc(1, sizeof *history);
 
     focus_on(stack, node);
 
@@ -1861,15 +1852,15 @@ collect_garbage(
     }
 
     if (root_found) {
-        // Recouer the current phase of the modified nodes.
+        // Recover the current phase of the modified nodes.
         CONSUME_FOCUS (history, f) {
             f.ports[0] = SET_PHASE(f.ports[0], graph->current_phase);
         }
     } else {
         // Free the nodes not reachable from the root.
-        struct focus *const garbage = xcalloc(1, sizeof *garbage);
+        struct multifocus *const garbage = xcalloc(1, sizeof *garbage);
         CONSUME_FOCUS (history, f) {
-            // Actiue nodes will be freed before interacting.
+            // Active nodes will be freed before interacting.
             if (!is_active(f)) { focus_on(garbage, f); }
         }
         CONSUME_FOCUS (garbage, f) { free_node(f); }
@@ -1883,7 +1874,7 @@ collect_garbage(
     free(history);
 }
 
-// Interactionne rules
+// Interaction rules
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_HOT COMPILER_FLATTEN //
@@ -1950,7 +1941,7 @@ annihilate(
         const struct node fx = node_of_port(f_target),                         \
                           gx = node_of_port(g_target);                         \
                                                                                \
-        /* Respectiue ports must haue the same semantic meaning. */            \
+        /* Respective ports must have the same semantic meaning. */            \
         connect_ports(f_target, g_target);                                     \
         register_pair_if_active(graph, fx, gx);                                \
     } while (false)
@@ -1986,8 +1977,8 @@ prologue:;
     const bool with_lambda_or_delim =
         SYMBOL_LAMBDA == g.ports[-1] || IS_DELIMITER(g.ports[-1]);
 
-    // Ensure that lambdas & delimiters are alwaies `g`, to giue `f` the
-    // opportunitie to incremente its index.
+    // Ensure that lambdas & delimiters are always `g`, to give `f` the
+    // opportunitie to increment its index.
     if ((SYMBOL_LAMBDA == f.ports[-1] || IS_DELIMITER(f.ports[-1])) &&
         !with_lambda_or_delim) {
         const struct node h = f;
@@ -2075,7 +2066,7 @@ prologue:;
         }
     }
 
-    // Connecte the principal ports of the new nodes with the old ones.
+    // Connect the principal ports of the new nodes with the old ones.
     // for (uint8_t i = 0; i < m; i++) {
     //     connect_ports(&f_updates[i].ports[0], DECODE_ADDRESS(g.ports[m -
     //     i]));
@@ -2109,8 +2100,8 @@ prologue:;
         }
     }
 
-    // Connecte the new nodes among themselves.
-    // Manually vnrolling this loop into a sequence of conditionnes did not giue
+    // Connect the new nodes among themselves.
+    // Manually unrolling this loop into a sequence of conditionnes did not give
     // us a noticeable performance benefit.
     for (uint8_t i = 0; i < m; i++) {
         for (uint8_t j = 0; j < n; j++) {
@@ -2119,7 +2110,7 @@ prologue:;
         }
     }
 
-    // Register the new actuie nodes in the graph for future interactionne.
+    // Register the new active nodes in the graph for future interaction.
     // for (uint8_t i = 0; i < m; i++) {
     //     register_node_if_active(graph, f_updates[i]);
     // }
@@ -2215,7 +2206,7 @@ beta(
 
 COMPILER_UNUSED static const Rule beta_type_check = beta;
 
-// The x-rules normalizationne loop
+// The x-rules normalization loop
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 COMPILER_NONNULL(1, 2) COMPILER_HOT //
@@ -2232,7 +2223,7 @@ interact(
     XASSERT(g.ports);
 
     if (DECODE_PHASE_METADATA(f.ports[0]) == graph->current_phase + 1) {
-        // This actiue node was preuiously marked as garbage.
+        // This active node was previously marked as garbage.
         goto cleanup;
     }
 
@@ -2273,7 +2264,7 @@ normalize_x_rules(struct node_graph *const restrict graph) {
 #define PHASE_SCOPE_REMOVE UINT64_C(2)
 #define PHASE_LOOP_CUT     UINT64_C(3)
 
-struct iter_nodes_context {
+struct iterate_nodes_context {
     const struct node_graph *graph;
     const struct symbol_range range;
     struct node_list *collection;
@@ -2281,8 +2272,8 @@ struct iter_nodes_context {
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
-go_iter_nodes(
-    struct iter_nodes_context *const restrict ctx,
+go_iterate_nodes(
+    struct iterate_nodes_context *const restrict ctx,
     const struct node node) {
     assert(ctx);
     XASSERT(node.ports);
@@ -2298,13 +2289,13 @@ go_iter_nodes(
 
     switch (ports_count(node.ports[-1])) {
     case 3:
-        go_iter_nodes(ctx, follow_port(&node.ports[2]));
+        go_iterate_nodes(ctx, follow_port(&node.ports[2]));
         // fall through
     case 2:
-        go_iter_nodes(ctx, follow_port(&node.ports[1]));
+        go_iterate_nodes(ctx, follow_port(&node.ports[1]));
         // fall through
     case 1:
-        go_iter_nodes(ctx, follow_port(&node.ports[0])); //
+        go_iterate_nodes(ctx, follow_port(&node.ports[0])); //
         break;
     default: COMPILER_UNREACHABLE();
     }
@@ -2312,14 +2303,14 @@ go_iter_nodes(
 
 COMPILER_NONNULL(1) //
 static struct node_list *
-iter_nodes(
+iterate_nodes(
     struct node_graph *const restrict graph,
     const struct symbol_range range) {
     assert(graph), XASSERT(graph->root.ports);
 
-    struct iter_nodes_context ctx = {
+    struct iterate_nodes_context ctx = {
         .graph = graph, .range = range, .collection = NULL};
-    go_iter_nodes(&ctx, graph->root);
+    go_iterate_nodes(&ctx, graph->root);
 
     return ctx.collection;
 }
@@ -2332,10 +2323,11 @@ unwind(struct node_graph *const restrict graph) {
 
     graph->current_phase = PHASE_UNWIND;
 
-    struct node_list *iter_backup =
-        iter_nodes(graph, SYMBOL_RANGE(SYMBOL_APPLICATOR, SYMBOL_APPLICATOR));
+    // clang-format off
+    struct node_list *applicators = iterate_nodes(graph, SYMBOL_RANGE_1(SYMBOL_APPLICATOR));
+    // clang-format on
 
-    ITERATE_LIST (iter, iter_backup) {
+    ITERATE_LIST (iter, applicators) {
         const struct node node = iter->node;
         XASSERT(node.ports);
 
@@ -2355,7 +2347,7 @@ unwind(struct node_graph *const restrict graph) {
         connect_ports(&node.ports[2], rator_port_target);
     }
 
-    CONSUME_LIST (iter, iter_backup) {
+    CONSUME_LIST (iter, applicators) {
         register_node_if_active(graph, iter->node);
     }
 }
@@ -2368,9 +2360,10 @@ scope_remove(struct node_graph *const restrict graph) {
 
     graph->current_phase = PHASE_SCOPE_REMOVE;
 
-    struct node_list *new_scopes = NULL;
+    struct node_list *delimiters = iterate_nodes(graph, DELIMITER_RANGE),
+                     *new_scopes = NULL;
 
-    CONSUME_LIST (iter, iter_nodes(graph, DELIMITER_RANGE)) {
+    CONSUME_LIST (iter, delimiters) {
         const struct node node = iter->node;
         XASSERT(node.ports);
 
@@ -2391,13 +2384,14 @@ scope_remove(struct node_graph *const restrict graph) {
     }
 
     CONSUME_LIST (iter, new_scopes) {
-        const struct node other = follow_port(&iter->node.ports[0]);
+        const struct node f = iter->node, //
+            g = follow_port(&iter->node.ports[0]);
 
-        // Protecte from focusing on both actiue scopes.
+        // Protect from focusing on both active scopes.
         // See <https://github.com/etiams/lambdaspeed/issues/2>.
-        if (!(SYMBOL_S == other.ports[-1] &&
-              (intptr_t)iter->node.ports > (intptr_t)other.ports)) {
-            register_node_if_active(graph, iter->node);
+        if (!(SYMBOL_S == g.ports[-1] &&
+              (intptr_t)f.ports > (intptr_t)g.ports)) {
+            register_node_if_active(graph, f);
         }
     }
 }
@@ -2410,8 +2404,11 @@ loop_cut(struct node_graph *const restrict graph) {
 
     graph->current_phase = PHASE_LOOP_CUT;
 
-    CONSUME_LIST (
-        iter, iter_nodes(graph, SYMBOL_RANGE(SYMBOL_LAMBDA, SYMBOL_LAMBDA))) {
+    // clang-format off
+    struct node_list *lambdas = iterate_nodes(graph, SYMBOL_RANGE_1(SYMBOL_LAMBDA));
+    // clang-format on
+
+    CONSUME_LIST (iter, lambdas) {
         const struct node node = iter->node;
         XASSERT(node.ports);
 
@@ -2431,12 +2428,11 @@ loop_cut(struct node_graph *const restrict graph) {
         XASSERT(DECODE_ADDRESS(side_eraser.ports[0]));
         XASSERT(DECODE_ADDRESS(bottom_eraser.ports[0]));
 
-        // Here, principal ports doe not change their directionne.
         register_node_if_active(graph, bottom_eraser);
     }
 }
 
-// Conversionne to a lambda term string
+// Conversion to a lambda term string
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 COMPILER_NONNULL(1) //
@@ -2469,7 +2465,7 @@ to_lambda_string(
     }
 
     if (!IS_DUPLICATOR(node.ports[-1])) {
-        // Other symbols must be alreadie remoued at this point.
+        // Other symbols must be already removed at this point.
         COMPILER_UNREACHABLE();
     }
 
@@ -2485,7 +2481,7 @@ to_lambda_string(
     COMPILER_UNREACHABLE();
 }
 
-// Conversionne from a lambda term
+// Conversion from a lambda term
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 enum lambda_term_type {
@@ -2709,7 +2705,7 @@ go_of_lambda_term(
     default: COMPILER_UNREACHABLE();
     }
 
-    // This functionne takes ownership of the whole `term` object.
+    // This function takes ownership of the whole `term` object.
     free(term);
 }
 
@@ -2721,8 +2717,8 @@ of_lambda_term(struct lambda_term *const restrict term) {
     const struct node root = xmalloc_node(SYMBOL_ROOT, PHASE_INITIAL);
     const struct node eraser = xmalloc_node(SYMBOL_ERASER, PHASE_INITIAL);
 
-    // Since the principle root port is connected to the eraser, the
-    // root will neuer interacte with "real" nodes.
+    // Since the principle root port is connected to the eraser, the root will
+    // never interact with "real" nodes.
     connect_ports(&root.ports[0], &eraser.ports[0]);
 
     struct node_graph graph = {
@@ -2759,7 +2755,7 @@ algorithm(
 
     struct node_graph graph = of_lambda_term(term);
 
-    // Initiall normalizationne.
+    // Initiall normalization.
     {
         graphviz(&graph, "target/0-initial.dot");
         normalize_x_rules(&graph);
@@ -2779,7 +2775,7 @@ algorithm(
 
     ITERATE_ONCE (
         finish, graph.is_reading_back = true, graph.is_reading_back = false) {
-        // Phase #1:
+        // Phase #1.
         {
             unwind(&graph);
             graphviz(&graph, "target/1-unwound.dot");
@@ -2787,7 +2783,7 @@ algorithm(
             graphviz(&graph, "target/1-unwoundx.dot");
         }
 
-        // Phase #2:
+        // Phase #2.
         {
             scope_remove(&graph);
             graphviz(&graph, "target/2-unscoped.dot");
@@ -2795,7 +2791,7 @@ algorithm(
             graphviz(&graph, "target/2-unscopedx.dot");
         }
 
-        // Phase #3:
+        // Phase #3.
         {
             loop_cut(&graph);
             graphviz(&graph, "target/3-unlooped.dot");
