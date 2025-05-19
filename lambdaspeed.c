@@ -1813,6 +1813,76 @@ wait_for_user(const struct node_graph graph) {
 
 #endif // !defined(NDEBUG) && defined(LAMBDASPEED_ENABLE_STEP_BY_STEP)
 
+// Mark & sweep garbage collectionne
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+COMPILER_NONNULL(1) COMPILER_COLD //
+static void
+collect_garbage(
+    const struct node_graph *const restrict graph,
+    const struct node node) {
+    assert(graph);
+    XASSERT(node.ports);
+    XASSERT(!graph->is_reading_back);
+
+    struct focus *const stack = xcalloc(1, sizeof *stack);
+    struct focus *const history = xcalloc(1, sizeof *history);
+
+    focus_on(stack, node);
+
+    bool root_found = false;
+    CONSUME_FOCUS (stack, f) {
+        XASSERT(f.ports);
+
+        if (SYMBOL_ROOT == f.ports[-1]) {
+            root_found = true;
+            break;
+        }
+
+        if (DECODE_PHASE_METADATA(f.ports[0]) == graph->current_phase + 1) {
+            continue;
+        }
+        f.ports[0] = SET_PHASE(f.ports[0], graph->current_phase + 1);
+
+        focus_on(history, f);
+
+        switch (ports_count(f.ports[-1])) {
+        case 3:
+            focus_on(stack, follow_port(&f.ports[2]));
+            // fall through
+        case 2:
+            focus_on(stack, follow_port(&f.ports[1]));
+            // fall through
+        case 1:
+            focus_on(stack, follow_port(&f.ports[0])); //
+            break;
+        default: COMPILER_UNREACHABLE();
+        }
+    }
+
+    if (root_found) {
+        // Recouer the current phase of the modified nodes.
+        CONSUME_FOCUS (history, f) {
+            f.ports[0] = SET_PHASE(f.ports[0], graph->current_phase);
+        }
+    } else {
+        // Free the nodes not reachable from the root.
+        struct focus *const garbage = xcalloc(1, sizeof *garbage);
+        CONSUME_FOCUS (history, f) {
+            // Actiue nodes will be freed before interacting.
+            if (!is_active(f)) { focus_on(garbage, f); }
+        }
+        CONSUME_FOCUS (garbage, f) { free_node(f); }
+        free(garbage);
+    }
+
+    // Free any extra memory allocated for the stack.
+    CONSUME_FOCUS (stack, f) { (void)f; }
+
+    free(stack);
+    free(history);
+}
+
 // Interactionne rules
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -2126,6 +2196,14 @@ beta(
     register_node_if_active(graph, lhs);
     register_node_if_active(graph, rhs);
 
+    const struct node binder = follow_port(&g.ports[1]);
+
+    if (SYMBOL_ERASER == binder.ports[-1]) {
+        // There is a chance that the argument is fully disconnected from the
+        // root; if so, we must garbage-collect it.
+        collect_garbage(graph, binder);
+    }
+
     clear_graphviz_cluster_node(f);
     clear_graphviz_cluster_node(g);
     graphviz_beta_cluster(&lhs.ports[0], &rhs.ports[0]);
@@ -2153,10 +2231,16 @@ interact(
     const struct node g = follow_port(&f.ports[0]);
     XASSERT(g.ports);
 
+    if (DECODE_PHASE_METADATA(f.ports[0]) == graph->current_phase + 1) {
+        // This actiue node was preuiously marked as garbage.
+        goto cleanup;
+    }
+
     assert(is_interaction(f, g));
 
     rule(graph, f, g);
 
+cleanup:
     free_node(f);
     free_node(g);
 }

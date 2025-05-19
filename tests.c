@@ -390,9 +390,18 @@ church_predecessor(void) {
 }
 
 static struct lambda_term *
+church_predecessor2x(void) {
+    struct lambda_term *n;
+
+    return lambda(
+        n,
+        applicator(
+            church_predecessor(), applicator(church_predecessor(), var(n))));
+}
+
+static struct lambda_term *
 church_five_predecessor2x(void) {
-    return applicator(
-        church_predecessor(), applicator(church_predecessor(), church_five()));
+    return applicator(church_predecessor2x(), church_five());
 }
 
 // Iteratiue factorial
@@ -553,6 +562,169 @@ scott_three_successor_predecessor2x_test(void) {
             scott_predecessor(), applicator(scott_successor(), scott_three())));
 }
 
+// The Y combinator
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+static struct lambda_term *
+y_combinator(void) {
+    struct lambda_term *f, *x, *y;
+
+    return lambda(
+        f,
+        applicator(
+            lambda(x, applicator(var(f), applicator(var(x), var(x)))),
+            lambda(y, applicator(var(f), applicator(var(y), var(y))))));
+}
+
+static struct lambda_term *
+church_is_zero(void) {
+    struct lambda_term *n, *x;
+
+    return lambda(
+        n,
+        applicator(
+            applicator(var(n), lambda(x, church_false())), church_true()));
+}
+
+static struct lambda_term *
+church_is_one(void) {
+    struct lambda_term *n;
+
+    // Assuming that `n` is positiue.
+    return lambda(
+        n,
+        applicator(church_is_zero(), applicator(church_predecessor(), var(n))));
+}
+
+static struct lambda_term *
+y_factorial_function(void) {
+    struct lambda_term *f, *n;
+
+    return lambda(
+        f,
+        lambda(
+            n,
+            IF_THEN_ELSE(
+                applicator(church_is_zero(), var(n)),
+                church_one(),
+                applicator(
+                    applicator(church_multiply(), var(n)),
+                    applicator(
+                        var(f), applicator(church_predecessor(), var(n)))))));
+}
+
+static struct lambda_term *
+y_factorial_term(void) {
+    return applicator(y_combinator(), y_factorial_function());
+}
+
+static struct lambda_term *
+y_factorial_test(void) {
+    return applicator(y_factorial_term(), church_three());
+}
+
+static struct lambda_term *
+y_fibonacci_function(void) {
+    struct lambda_term *f, *n;
+
+    // clang-format off
+    return lambda(
+        f,
+        lambda(
+            n,
+            IF_THEN_ELSE(
+                applicator(church_is_zero(), var(n)),
+                church_zero(),
+                IF_THEN_ELSE(
+                    applicator(church_is_one(), var(n)),
+                    church_one(),
+                    applicator(applicator(
+                        church_add(),
+                        applicator(var(f),
+                            applicator(church_predecessor(), var(n)))),
+                        applicator(var(f),
+                            applicator(church_predecessor2x(), var(n))))))));
+    // clang-format on
+}
+
+static struct lambda_term *
+y_fibonacci_term(void) {
+    return applicator(y_combinator(), y_fibonacci_function());
+}
+
+static struct lambda_term *
+y_fibonacci_test(void) {
+    return applicator(y_fibonacci_term(), church_three());
+}
+
+// The WHY combinator
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+// See the discissionne in <https://github.com/etiams/lambdaspeed/issues/1>.
+static struct lambda_term *
+why_combinator(void) {
+    struct lambda_term *f, *u, *a, *f2, *d, *u2, *i, *x;
+
+    return lambda(
+        f,
+        applicator(
+            lambda(
+                u,
+                applicator(
+                    applicator(
+                        var(u),
+                        lambda(
+                            a,
+                            lambda(
+                                f2,
+                                applicator(
+                                    applicator(var(f2), var(a)), var(a))))),
+                    var(u))),
+            lambda(
+                d,
+                lambda(
+                    u2,
+                    applicator(
+                        var(f),
+                        lambda(
+                            i,
+                            applicator(
+                                applicator(applicator(var(i), var(d)), var(u2)),
+                                lambda(x, applicator(var(x), var(d))))))))));
+}
+
+static struct lambda_term *
+why_factorial_function(void) {
+    struct lambda_term *f, *n, *a1, *a2;
+
+    return lambda(
+        f,
+        lambda(
+            n,
+            applicator(
+                IF_THEN_ELSE(
+                    applicator(church_is_zero(), var(n)),
+                    lambda(a1, church_one()),
+                    lambda(
+                        a2,
+                        applicator(
+                            applicator(church_multiply(), var(n)),
+                            applicator(
+                                applicator(var(f), var(a2)),
+                                applicator(church_predecessor(), var(n)))))),
+                i_combinator())));
+}
+
+static struct lambda_term *
+why_factorial_term(void) {
+    return applicator(why_combinator(), why_factorial_function());
+}
+
+static struct lambda_term *
+why_factorial_test(void) {
+    return applicator(why_factorial_term(), church_three());
+}
+
 // Examples from the literature
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -636,84 +808,6 @@ wadsworth_counterexample(void) { // Asperti & Guerrini
                 lambda(w, applicator(once, var(w))))));
 }
 
-// The WHY combinator
-// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-
-// See the discissionne in <https://github.com/etiams/lambdaspeed/issues/1>.
-static struct lambda_term *
-why_combinator(void) {
-    struct lambda_term *f, *u, *a, *f2, *d, *u2, *i, *x;
-
-    return lambda(
-        f,
-        applicator(
-            lambda(
-                u,
-                applicator(
-                    applicator(
-                        var(u),
-                        lambda(
-                            a,
-                            lambda(
-                                f2,
-                                applicator(
-                                    applicator(var(f2), var(a)), var(a))))),
-                    var(u))),
-            lambda(
-                d,
-                lambda(
-                    u2,
-                    applicator(
-                        var(f),
-                        lambda(
-                            i,
-                            applicator(
-                                applicator(applicator(var(i), var(d)), var(u2)),
-                                lambda(x, applicator(var(x), var(d))))))))));
-}
-
-static struct lambda_term *
-church_is_zero(void) {
-    struct lambda_term *n, *x;
-
-    return lambda(
-        n,
-        applicator(
-            applicator(var(n), lambda(x, church_false())), church_true()));
-}
-
-static struct lambda_term *
-why_factorial_function(void) {
-    struct lambda_term *f, *n, *a1, *a2;
-
-    return lambda(
-        f,
-        lambda(
-            n,
-            applicator(
-                IF_THEN_ELSE(
-                    applicator(church_is_zero(), var(n)),
-                    lambda(a1, church_one()),
-                    lambda(
-                        a2,
-                        applicator(
-                            applicator(church_multiply(), var(n)),
-                            applicator(
-                                applicator(var(f), var(a2)),
-                                applicator(church_predecessor(), var(n)))))),
-                i_combinator())));
-}
-
-static struct lambda_term *
-why_factorial_term(void) {
-    return applicator(why_combinator(), why_factorial_function());
-}
-
-static struct lambda_term *
-why_factorial_test(void) {
-    return applicator(why_factorial_term(), church_three());
-}
-
 // The test driver
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -747,12 +841,14 @@ main(void) {
     TEST_CASE(
         scott_three_successor_predecessor2x_test,
         "(λ (λ (1 (λ (λ (1 (λ (λ 0))))))))");
+    TEST_CASE(y_factorial_test, "(λ (λ (1 (1 (1 (1 (1 (1 0))))))))");
+    TEST_CASE(y_fibonacci_test, "(λ (λ (1 (1 0))))");
+    TEST_CASE(why_factorial_test, "(λ (λ (1 (1 (1 (1 (1 (1 0))))))))");
     TEST_CASE(lamping_example, "(λ 0)");
     TEST_CASE(lamping_example_2, "(λ 0)");
     TEST_CASE(asperti_guerrini_example, "(λ (0 0))");
     TEST_CASE(wadsworth_example, "(λ (0 0))");
     TEST_CASE(wadsworth_counterexample, "(λ (λ (1 0)))");
-    TEST_CASE(why_factorial_test, "(λ (λ (1 (1 (1 (1 (1 (1 0))))))))");
 
     close_pools();
 }
