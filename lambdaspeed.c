@@ -400,7 +400,7 @@ STATIC_ASSERT(
     UINT64_MAX == MAX_DELIMITER_INDEX,
     "Every bit of a symbol must be used!");
 
-#define IS_PRINCIPAL_PORT(port) (0 == DECODE_OFFSET_METADATA(*(port)))
+#define IS_PRINCIPAL_PORT(port) (0 == DECODE_OFFSET_METADATA(port))
 
 #define SYMBOL_ROOT          UINT64_C(0)
 #define SYMBOL_GARBAGE       UINT64_C(1)
@@ -1748,7 +1748,7 @@ graphviz_draw_edge(
         graphviz_edge_tailport(source, i, ctx->is_reading_back),
         (is_active ? ", color=" GRAPHVIZ_ACTIVE_COLOR : ""),
         (is_active ? ", penwidth=1.5" : ""),
-        (IS_PRINCIPAL_PORT(target_port) ? ", arrowhead=dot" : ""),
+        (IS_PRINCIPAL_PORT(*target_port) ? ", arrowhead=dot" : ""),
         (0 == i ? ", style=dashed" : ""));
 }
 
@@ -2000,9 +2000,10 @@ protrude_node(
     XASSERT(f.ports);
 
     uint64_t *const target_port = DECODE_ADDRESS(port);
+
     connect_ports(&f.ports[0], target_port);
 
-    if (IS_PRINCIPAL_PORT(target_port)) {
+    if (IS_PRINCIPAL_PORT(*target_port)) {
         register_active_pair(graph, f, (struct node){target_port});
     }
 }
