@@ -2559,25 +2559,36 @@ prevar(struct lambda_payload *const lambda) {
 
 #define var(x) prevar(&(x)->payload.lambda)
 
-COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(2) //
+COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1, 2) //
 static uint64_t
-count_var_occurrences(
-    const struct lambda_term term,
+count_binder_usage(
+    const struct lambda_term *const restrict term,
     const struct lambda_payload *const restrict lambda) {
+    assert(term);
     assert(lambda);
 
-    switch (term.ty) {
-    case LAMBDA_TERM_APPLICATOR:
-        XASSERT(term.payload.applicator.rator);
-        XASSERT(term.payload.applicator.rand);
-        return count_var_occurrences(*term.payload.applicator.rator, lambda) +
-               count_var_occurrences(*term.payload.applicator.rand, lambda);
-    case LAMBDA_TERM_LAMBDA:
-        XASSERT(term.payload.lambda.body);
-        return count_var_occurrences(*term.payload.lambda.body, lambda);
-    case LAMBDA_TERM_VAR:
-        XASSERT(term.payload.var);
-        return lambda == term.payload.var;
+    switch (term->ty) {
+    case LAMBDA_TERM_APPLICATOR: {
+        struct lambda_term *const rator = term->payload.applicator.rator,
+                                  *const rand = term->payload.applicator.rand;
+        XASSERT(rator);
+        XASSERT(rand);
+
+        return count_binder_usage(rator, lambda) +
+               count_binder_usage(rand, lambda);
+    }
+    case LAMBDA_TERM_LAMBDA: {
+        struct lambda_term *const body = term->payload.lambda.body;
+        XASSERT(body);
+
+        return count_binder_usage(body, lambda);
+    }
+    case LAMBDA_TERM_VAR: {
+        struct lambda_payload *this_lambda = term->payload.var;
+        XASSERT(this_lambda);
+
+        return lambda == this_lambda;
+    }
     default: COMPILER_UNREACHABLE();
     }
 }
@@ -2656,22 +2667,27 @@ go_of_lambda_term(
 
     switch (term->ty) {
     case LAMBDA_TERM_APPLICATOR: {
-        XASSERT(term->payload.applicator.rator);
-        XASSERT(term->payload.applicator.rand);
+        struct lambda_term *const rator = term->payload.applicator.rator,
+                                  *const rand = term->payload.applicator.rand;
+        XASSERT(rator);
+        XASSERT(rand);
+
         const struct node applicator = alloc_node(graph, SYMBOL_APPLICATOR);
-        go_of_lambda_term(
-            graph, term->payload.applicator.rator, &applicator.ports[0], lvl);
-        go_of_lambda_term(
-            graph, term->payload.applicator.rand, &applicator.ports[2], lvl);
+        go_of_lambda_term(graph, rator, &applicator.ports[0], lvl);
+        go_of_lambda_term(graph, rand, &applicator.ports[2], lvl);
         connect_ports(&applicator.ports[1], output_port);
         if (is_active(applicator)) { focus_on(graph->betas, applicator); }
+
         break;
     }
     case LAMBDA_TERM_LAMBDA: {
-        XASSERT(term->payload.lambda.body);
+        struct lambda_payload *const tlambda = &term->payload.lambda;
+        struct lambda_term *const body = term->payload.lambda.body;
+        XASSERT(tlambda);
+        XASSERT(body);
+
         const struct node lambda = alloc_node(graph, SYMBOL_LAMBDA);
-        const uint64_t nvars = count_var_occurrences(
-            *term->payload.lambda.body, &term->payload.lambda);
+        const uint64_t nvars = count_binder_usage(body, tlambda);
         uint64_t **dup_ports = NULL;
         if (0 == nvars) {
             const struct node eraser = alloc_node(graph, SYMBOL_ERASER);
@@ -2680,17 +2696,18 @@ go_of_lambda_term(
             dup_ports = build_duplicator_tree(
                 graph, &lambda.ports[1], nvars /* nvars >= 1 */);
         }
-        term->payload.lambda.dup_ports = dup_ports;
-        term->payload.lambda.lvl = lvl;
-        go_of_lambda_term(
-            graph, term->payload.lambda.body, &lambda.ports[2], lvl + 1);
+        tlambda->dup_ports = dup_ports;
+        tlambda->lvl = lvl;
+        go_of_lambda_term(graph, body, &lambda.ports[2], lvl + 1);
         connect_ports(&lambda.ports[0], output_port);
         if (dup_ports) { free(dup_ports); }
+
         break;
     }
     case LAMBDA_TERM_VAR: {
-        XASSERT(term->payload.var);
         struct lambda_payload *const lambda = term->payload.var;
+        XASSERT(lambda);
+
         const uint64_t idx = de_bruijn_level_to_index(lvl, lambda->lvl);
         if (0 == idx) {
             connect_ports(lambda->dup_ports[0], output_port);
@@ -2700,6 +2717,7 @@ go_of_lambda_term(
             connect_ports(delimiter_port, output_port);
         }
         lambda->dup_ports++;
+
         break;
     }
     default: COMPILER_UNREACHABLE();
