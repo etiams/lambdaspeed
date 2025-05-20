@@ -116,11 +116,11 @@ are not compatible with `NDEBUG`!
 #error C99 or higher is required!
 #endif
 
-#if defined(__has_feature) // Clang
+#if !defined(NDEBUG) && defined(__has_feature) // Clang
 #if __has_feature(address_sanitizer)
 #define COMPILER_ASAN_AVAILABLE
 #endif
-#elif defined(__SANITIZE_ADDRESS__) // GCC & MSVC
+#elif !defined(NDEBUG) && defined(__SANITIZE_ADDRESS__) // GCC & MSVC
 #define COMPILER_ASAN_AVAILABLE
 #endif
 
@@ -192,9 +192,10 @@ are not compatible with `NDEBUG`!
 #endif // __GNUC__
 
 #ifdef COMPILER_ASAN_AVAILABLE
-#define COMPILER_POISON_MEMORY      ASAN_POISON_MEMORY_REGION
-#define COMPILER_UNPOISON_MEMORY    ASAN_UNPOISON_MEMORY_REGION
-#define COMPILER_IS_POISONED_MEMORY __asan_region_is_poisoned
+#define COMPILER_POISON_MEMORY       ASAN_POISON_MEMORY_REGION
+#define COMPILER_UNPOISON_MEMORY     ASAN_UNPOISON_MEMORY_REGION
+#define COMPILER_IS_POISONED_ADDRESS __asan_address_is_poisoned
+#define COMPILER_IS_POISONED_MEMORY  __asan_region_is_poisoned
 #endif
 
 #define COMPILER_IGNORE                /* empty, object-like */
@@ -266,6 +267,10 @@ are not compatible with `NDEBUG`!
 
 #ifndef COMPILER_UNPOISON_MEMORY
 #define COMPILER_UNPOISON_MEMORY COMPILER_IGNORE_WITH_ARGS
+#endif
+
+#ifndef COMPILER_IS_POISONED_ADDRESS
+#define COMPILER_IS_POISONED_ADDRESS COMPILER_IGNORE_WITH_ARGS
 #endif
 
 #ifndef COMPILER_IS_POISONED_MEMORY
@@ -398,7 +403,7 @@ STATIC_ASSERT(
 #define IS_PRINCIPAL_PORT(port) (0 == DECODE_OFFSET_METADATA(*(port)))
 
 #define SYMBOL_ROOT          UINT64_C(0)
-#define SYMBOL_GARBAGE       UINT64_C(1) /* may become usefull later */
+#define SYMBOL_GARBAGE       UINT64_C(1)
 #define SYMBOL_APPLICATOR    UINT64_C(2)
 #define SYMBOL_LAMBDA        UINT64_C(3)
 #define SYMBOL_ERASER        UINT64_C(4)
@@ -707,6 +712,7 @@ xcalloc(const size_t n, const size_t size) {
         assert(object);                                                        \
                                                                                \
         object--; /* back to the symbol address */                             \
+        *object = SYMBOL_GARBAGE;                                              \
         union prefix##_chunk *const freed = (union prefix##_chunk *)object;    \
         CLEAR_MEMORY(freed);                                                   \
         freed->next = self->next_free_chunk;                                   \
@@ -889,9 +895,36 @@ is_active(const struct node node) {
     return is_interacting_with(node, follow_port(&node.ports[0]));
 }
 
+// clang-format off
+COMPILER_HOT static void free_node(const struct node node);
+// clang-format on
+
+COMPILER_WARN_UNUSED_RESULT COMPILER_HOT //
+inline static bool
+is_garbage_node(const struct node node) {
+    XASSERT(node.ports);
+
+#ifdef COMPILER_ASAN_AVAILABLE
+    return !COMPILER_IS_POISONED_ADDRESS(node.ports);
+#else
+    return SYMBOL_GARBAGE != node.ports[-1];
+#endif
+}
+
 COMPILER_HOT //
 static void
-free_node(const struct node node);
+free_node_if_non_active(const struct node f) {
+    XASSERT(f.ports);
+
+    if (is_garbage_node(f)) { return; }
+
+    const struct node g = follow_port(&f.ports[0]);
+    if (is_garbage_node(g)) { return; }
+
+    if (is_interacting_with(f, g)) { return; }
+
+    free_node(f);
+}
 
 // A linked list of nodes
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -1845,6 +1878,8 @@ collect_garbage(
 
     focus_on(stack, node);
 
+    const uint64_t altered_phase = graph->current_phase + 1;
+
     bool root_found = false;
     CONSUME_FOCUS (stack, f) {
         XASSERT(f.ports);
@@ -1854,10 +1889,8 @@ collect_garbage(
             break;
         }
 
-        if (DECODE_PHASE_METADATA(f.ports[0]) == graph->current_phase + 1) {
-            continue;
-        }
-        f.ports[0] = SET_PHASE(f.ports[0], graph->current_phase + 1);
+        if (DECODE_PHASE_METADATA(f.ports[0]) == altered_phase) { continue; }
+        f.ports[0] = SET_PHASE(f.ports[0], altered_phase);
 
         focus_on(history, f);
 
@@ -1882,17 +1915,14 @@ collect_garbage(
         }
     } else {
         // Free the nodes not reachable from the root.
-        struct multifocus *const garbage = xcalloc(1, sizeof *garbage);
         CONSUME_FOCUS (history, f) {
-            // Active nodes will be freed before interacting.
-            if (!is_active(f)) { focus_on(garbage, f); }
+            // Active nodes will be freed later before interacting.
+            free_node_if_non_active(f);
         }
-        CONSUME_FOCUS (garbage, f) { free_node(f); }
-        free(garbage);
     }
 
-    // Free any extra memory allocated for the stack.
-    CONSUME_FOCUS (stack, f) { (void)f; }
+    // Free all the alocated cells of the fallback list.
+    CONSUME_LIST (iter, stack->fallback) {}
 
     free(stack);
     free(history);
