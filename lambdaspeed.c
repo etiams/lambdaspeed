@@ -899,15 +899,15 @@ is_active(const struct node node) {
 COMPILER_HOT static void free_node(const struct node node);
 // clang-format on
 
-COMPILER_WARN_UNUSED_RESULT COMPILER_HOT //
+COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) COMPILER_HOT //
 inline static bool
-is_garbage_node(const struct node node) {
-    XASSERT(node.ports);
+is_garbage_node(uint64_t *const restrict port) {
+    assert(port);
 
 #ifdef COMPILER_ASAN_AVAILABLE
-    return !COMPILER_IS_POISONED_ADDRESS(node.ports);
+    return COMPILER_IS_POISONED_ADDRESS(port);
 #else
-    return SYMBOL_GARBAGE != node.ports[-1];
+    return SYMBOL_GARBAGE == *(get_principal_port(port) - 1);
 #endif
 }
 
@@ -916,10 +916,12 @@ static void
 free_node_if_non_active(const struct node f) {
     XASSERT(f.ports);
 
-    if (is_garbage_node(f)) { return; }
+    if (is_garbage_node(f.ports)) { return; }
 
-    const struct node g = follow_port(&f.ports[0]);
-    if (is_garbage_node(g)) { return; }
+    uint64_t *const target_port = DECODE_ADDRESS(f.ports[0]);
+    if (is_garbage_node(target_port)) { return; }
+
+    const struct node g = node_of_port(target_port);
 
     if (is_interacting_with(f, g)) { return; }
 
