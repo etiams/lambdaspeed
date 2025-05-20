@@ -1895,7 +1895,7 @@ collect_garbage(
 // Interaction rules
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_HOT COMPILER_FLATTEN //
+COMPILER_PURE COMPILER_WARN_UNUSED_RESULT //
 inline static bool
 is_annihilation(const struct node f, const struct node g) {
     XASSERT(f.ports), XASSERT(g.ports);
@@ -1903,7 +1903,7 @@ is_annihilation(const struct node f, const struct node g) {
     return is_interaction(f, g) && f.ports[-1] == g.ports[-1];
 }
 
-COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_HOT COMPILER_FLATTEN //
+COMPILER_PURE COMPILER_WARN_UNUSED_RESULT //
 inline static bool
 is_beta(const struct node f, const struct node g) {
     XASSERT(f.ports), XASSERT(g.ports);
@@ -1912,13 +1912,51 @@ is_beta(const struct node f, const struct node g) {
            (SYMBOL_APPLICATOR == f.ports[-1] && SYMBOL_LAMBDA == g.ports[-1]);
 }
 
-COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_HOT COMPILER_FLATTEN //
+COMPILER_PURE COMPILER_WARN_UNUSED_RESULT //
 inline static bool
 is_commutation(const struct node f, const struct node g) {
     XASSERT(f.ports), XASSERT(g.ports);
 
     return is_interaction(f, g) && !is_beta(f, g) && !is_beta(g, f) &&
            f.ports[-1] != g.ports[-1];
+}
+
+COMPILER_NONNULL(1) COMPILER_HOT //
+static void
+rewire_vertically(
+    struct node_graph *const restrict graph,
+    const struct node f,
+    const struct node g,
+    const uint8_t i) {
+    assert(graph);
+    XASSERT(f.ports), XASSERT(g.ports);
+
+    uint64_t *const lhs_target_port = DECODE_ADDRESS(f.ports[i]), //
+        *const rhs_target_port = DECODE_ADDRESS(g.ports[i]);
+
+    connect_ports(lhs_target_port, rhs_target_port);
+
+    const struct node fx = node_of_port(lhs_target_port), //
+        gx = node_of_port(rhs_target_port);
+
+    register_pair_if_active(graph, fx, gx);
+}
+
+COMPILER_NONNULL(1) COMPILER_HOT //
+static void
+protrude_node(
+    struct node_graph *const restrict graph,
+    const struct node f,
+    const uint64_t port) {
+    assert(graph);
+    XASSERT(f.ports);
+
+    uint64_t *const target_port = DECODE_ADDRESS(port);
+    connect_ports(&f.ports[0], target_port);
+
+    if (IS_PRINCIPAL_PORT(target_port)) {
+        register_active_pair(graph, f, (struct node){target_port});
+    }
 }
 
 typedef void (*Rule)(
@@ -1950,35 +1988,25 @@ annihilate(
     assert(is_annihilation(f, g));
     wait_for_user(*graph);
 
-    const uint8_t n = ports_count(f.ports[-1]) - 1;
+    const uint64_t n = ports_count(f.ports[-1]) - 1;
 
-#define BODY(i)                                                                \
-    do {                                                                       \
-        uint64_t *const f_target = DECODE_ADDRESS(f.ports[i]),                 \
-                        *const g_target = DECODE_ADDRESS(g.ports[i]);          \
-        const struct node fx = node_of_port(f_target),                         \
-                          gx = node_of_port(g_target);                         \
-                                                                               \
-        /* Respective ports must have the same semantic meaning. */            \
-        connect_ports(f_target, g_target);                                     \
-        register_pair_if_active(graph, fx, gx);                                \
-    } while (false)
-
+    // clang-format off
     switch (n) {
-    case 2: BODY(2); // fall through
-    case 1: BODY(1);
+    case 2: rewire_vertically(graph, f, g, 2);
+            // fall through
+    case 1: rewire_vertically(graph, f, g, 1);
+            // fall through
     case 0: break;
     default: COMPILER_UNREACHABLE();
     }
-
-#undef BODY
-
-    clear_graphviz_cluster_node(f);
-    clear_graphviz_cluster_node(g);
+    // clang-format on
 
 #ifdef LAMBDASPEED_ENABLE_STATS
     graph->nannihilations++;
 #endif
+
+    clear_graphviz_cluster_node(f);
+    clear_graphviz_cluster_node(g);
 }
 
 COMPILER_UNUSED static const Rule annihilate_type_check = annihilate;
@@ -2052,70 +2080,33 @@ prologue:;
     struct node f_updates[MAX_AUXILIARY_PORTS] = {{NULL}},
                 g_updates[MAX_AUXILIARY_PORTS] = {{NULL}};
 
-    // Allocate memory for the new nodes to be connected among themselves & with
-    // the rest of the graph.
-    // for (uint8_t i = 0; i < m; i++) {
-    //     f_updates[i] = alloc_node(graph, f_symbol);
-    // }
-    // for (uint8_t i = 0; i < n; i++) {
-    //     g_updates[i] = alloc_node(graph, g_symbol);
-    // }
-    {
-        switch (m) {
-        case 2:
-            f_updates[1] = alloc_node(graph, f_symbol);
-            // fall through
-        case 1:
-            f_updates[0] = alloc_node(graph, f_symbol);
-            // fall through
-        case 0: break;
-        default: COMPILER_UNREACHABLE();
-        }
+    // Connect the new nodes with the old ones, & register the new active nodes
+    // for future interaction...
 
-        switch (n) {
-        case 2:
-            g_updates[1] = alloc_node(graph, g_symbol);
-            // fall through
-        case 1:
-            g_updates[0] = alloc_node(graph, g_symbol);
-            // fall through
-        case 0: break;
-        default: COMPILER_UNREACHABLE();
-        }
+    switch (m) {
+    case 2:
+        f_updates[1] = alloc_node(graph, f_symbol);
+        protrude_node(graph, f_updates[1], g.ports[1]);
+        // fall through
+    case 1:
+        f_updates[0] = alloc_node(graph, f_symbol);
+        protrude_node(graph, f_updates[0], g.ports[m]);
+        break;
+    case 0: break;
+    default: COMPILER_UNREACHABLE();
     }
 
-    // Connect the principal ports of the new nodes with the old ones.
-    // for (uint8_t i = 0; i < m; i++) {
-    //     connect_ports(&f_updates[i].ports[0], DECODE_ADDRESS(g.ports[m -
-    //     i]));
-    // }
-    // for (uint8_t i = 0; i < n; i++) {
-    //     connect_ports(&g_updates[i].ports[0], DECODE_ADDRESS(f.ports[i +
-    //     1]));
-    // }
-    {
-        switch (m) {
-        case 2:
-            connect_ports(&f_updates[1].ports[0], DECODE_ADDRESS(g.ports[1]));
-            connect_ports(&f_updates[0].ports[0], DECODE_ADDRESS(g.ports[2]));
-            break;
-        case 1:
-            connect_ports(&f_updates[0].ports[0], DECODE_ADDRESS(g.ports[1]));
-            break;
-        case 0: break;
-        default: COMPILER_UNREACHABLE();
-        }
-
-        switch (n) {
-        case 2:
-            connect_ports(&g_updates[1].ports[0], DECODE_ADDRESS(f.ports[2]));
-            // fall through
-        case 1:
-            connect_ports(&g_updates[0].ports[0], DECODE_ADDRESS(f.ports[1]));
-            break;
-        case 0: break;
-        default: COMPILER_UNREACHABLE();
-        }
+    switch (n) {
+    case 2:
+        g_updates[1] = alloc_node(graph, g_symbol);
+        protrude_node(graph, g_updates[1], f.ports[2]);
+        // fall through
+    case 1:
+        g_updates[0] = alloc_node(graph, g_symbol);
+        protrude_node(graph, g_updates[0], f.ports[1]);
+        break;
+    case 0: break;
+    default: COMPILER_UNREACHABLE();
     }
 
     // Connect the new nodes among themselves.
@@ -2128,44 +2119,13 @@ prologue:;
         }
     }
 
-    // Register the new active nodes in the graph for future interaction.
-    // for (uint8_t i = 0; i < m; i++) {
-    //     register_node_if_active(graph, f_updates[i]);
-    // }
-    // for (uint8_t i = 0; i < n; i++) {
-    //     register_node_if_active(graph, g_updates[i]);
-    // }
-    {
-        switch (m) {
-        case 2:
-            register_node_if_active(graph, f_updates[1]);
-            // fall through
-        case 1:
-            register_node_if_active(graph, f_updates[0]);
-            // fall through
-        case 0: break;
-        default: COMPILER_UNREACHABLE();
-        }
-
-        switch (n) {
-        case 2:
-            register_node_if_active(graph, g_updates[1]);
-            // fall through
-        case 1:
-            register_node_if_active(graph, g_updates[0]);
-            // fall through
-        case 0: break;
-        default: COMPILER_UNREACHABLE();
-        }
-    }
+#ifdef LAMBDASPEED_ENABLE_STATS
+    graph->ncommutations++;
+#endif
 
     clear_graphviz_cluster_node(f);
     clear_graphviz_cluster_node(g);
     graphviz_commute_cluster(f_updates, g_updates, m, n);
-
-#ifdef LAMBDASPEED_ENABLE_STATS
-    graph->ncommutations++;
-#endif
 }
 
 COMPILER_UNUSED static const Rule commute_type_check = commute;
@@ -2213,13 +2173,13 @@ beta(
         collect_garbage(graph, binder);
     }
 
-    clear_graphviz_cluster_node(f);
-    clear_graphviz_cluster_node(g);
-    graphviz_beta_cluster(&lhs.ports[0], &rhs.ports[0]);
-
 #ifdef LAMBDASPEED_ENABLE_STATS
     graph->nbetas++;
 #endif
+
+    clear_graphviz_cluster_node(f);
+    clear_graphviz_cluster_node(g);
+    graphviz_beta_cluster(&lhs.ports[0], &rhs.ports[0]);
 }
 
 COMPILER_UNUSED static const Rule beta_type_check = beta;
