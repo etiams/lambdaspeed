@@ -1943,6 +1943,38 @@ collect_garbage(
 // Interaction rules
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
+// clang-format off
+typedef void (*Rule)
+    (struct node_graph *const restrict graph, struct node f, struct node g);
+// clang-format on
+
+COMPILER_NONNULL(1, 2) COMPILER_HOT //
+static void
+interact(
+    struct node_graph *const restrict graph,
+    const Rule rule,
+    const struct node f) {
+    assert(graph);
+    assert(rule);
+    XASSERT(f.ports);
+
+    const struct node g = follow_port(&f.ports[0]);
+    XASSERT(g.ports);
+
+    if (DECODE_PHASE_METADATA(f.ports[0]) == graph->current_phase + 1) {
+        // This active node was previously marked as garbage.
+        goto cleanup;
+    }
+
+    assert(is_interaction(f, g));
+
+    rule(graph, f, g);
+
+cleanup:
+    free_node(f);
+    free_node(g);
+}
+
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT //
 inline static bool
 is_annihilation(const struct node f, const struct node g) {
@@ -2007,11 +2039,6 @@ protrude_node(
         register_active_pair(graph, f, (struct node){target_port});
     }
 }
-
-typedef void (*Rule)(
-    struct node_graph *const restrict graph,
-    struct node f,
-    struct node g);
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
@@ -2229,33 +2256,6 @@ beta(
 }
 
 COMPILER_UNUSED static const Rule beta_type_check = beta;
-
-COMPILER_NONNULL(1, 2) COMPILER_HOT //
-static void
-interact(
-    struct node_graph *const restrict graph,
-    const Rule rule,
-    const struct node f) {
-    assert(graph);
-    assert(rule);
-    XASSERT(f.ports);
-
-    const struct node g = follow_port(&f.ports[0]);
-    XASSERT(g.ports);
-
-    if (DECODE_PHASE_METADATA(f.ports[0]) == graph->current_phase + 1) {
-        // This active node was previously marked as garbage.
-        goto cleanup;
-    }
-
-    assert(is_interaction(f, g));
-
-    rule(graph, f, g);
-
-cleanup:
-    free_node(f);
-    free_node(g);
-}
 
 // The read-back phases
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
