@@ -790,6 +790,24 @@ follow_port(uint64_t *const restrict port) {
     return node_of_port(DECODE_ADDRESS(*port));
 }
 
+COMPILER_CONST COMPILER_WARN_UNUSED_RESULT COMPILER_HOT //
+inline static int
+compare_node_ptrs(const struct node f, const struct node g) {
+    XASSERT(f.ports), XASSERT(g.ports);
+
+    if ((intptr_t)f.ports < (intptr_t)g.ports) return -1;
+    else if ((intptr_t)f.ports > (intptr_t)g.ports) return 1;
+    else return 0;
+}
+
+#define CONNECT_NODE(node, ...)                                                \
+    do {                                                                       \
+        uint64_t *const ports[] = {__VA_ARGS__};                               \
+        for (uint8_t i = 0; i < ARRAY_LENGTH(ports); i++) {                    \
+            connect_ports(&node.ports[i], ports[i]);                           \
+        }                                                                      \
+    } while (0)
+
 COMPILER_WARN_UNUSED_RESULT COMPILER_COLD //
 inline static struct node
 xmalloc_node(const uint64_t symbol, const uint64_t phase) {
@@ -2264,56 +2282,53 @@ normalize_x_rules(struct node_graph *const restrict graph) {
 #define PHASE_SCOPE_REMOVE UINT64_C(2)
 #define PHASE_LOOP_CUT     UINT64_C(3)
 
-struct iterate_nodes_context {
-    const struct node_graph *graph;
-    const struct symbol_range range;
-    struct node_list *collection;
-};
-
 COMPILER_NONNULL(1) COMPILER_HOT //
-static void
-go_iterate_nodes(
-    struct iterate_nodes_context *const restrict ctx,
-    const struct node node) {
-    assert(ctx);
-    XASSERT(node.ports);
-
-    if (DECODE_PHASE_METADATA(node.ports[0]) == ctx->graph->current_phase) {
-        return;
-    }
-    node.ports[0] = SET_PHASE(node.ports[0], ctx->graph->current_phase);
-
-    if (symbol_is_in_range(ctx->range, node.ports[-1])) {
-        ctx->collection = visit(ctx->collection, node);
-    }
-
-    switch (ports_count(node.ports[-1])) {
-    case 3:
-        go_iterate_nodes(ctx, follow_port(&node.ports[2]));
-        // fall through
-    case 2:
-        go_iterate_nodes(ctx, follow_port(&node.ports[1]));
-        // fall through
-    case 1:
-        go_iterate_nodes(ctx, follow_port(&node.ports[0])); //
-        break;
-    default: COMPILER_UNREACHABLE();
-    }
-}
-
-COMPILER_NONNULL(1) //
 static struct node_list *
-iterate_nodes(
-    struct node_graph *const restrict graph,
-    const struct symbol_range range) {
-    assert(graph), XASSERT(graph->root.ports);
+iterate_nodes(const struct node_graph *graph, const struct symbol_range range) {
+    assert(graph);
+    XASSERT(graph->root.ports);
 
-    struct iterate_nodes_context ctx = {
-        .graph = graph, .range = range, .collection = NULL};
-    go_iterate_nodes(&ctx, graph->root);
+    struct multifocus *stack = xcalloc(1, sizeof *stack);
+    struct node_list *collection = NULL;
 
-    return ctx.collection;
+    focus_on(stack, graph->root);
+
+    CONSUME_FOCUS (stack, node) {
+        XASSERT(node.ports);
+
+        if (DECODE_PHASE_METADATA(node.ports[0]) == graph->current_phase) {
+            continue;
+        }
+        node.ports[0] = SET_PHASE(node.ports[0], graph->current_phase);
+
+        if (symbol_is_in_range(range, node.ports[-1])) {
+            collection = visit(collection, node);
+        }
+
+        switch (ports_count(node.ports[-1])) {
+        case 3:
+            focus_on(stack, follow_port(&node.ports[2]));
+            // fall through
+        case 2:
+            focus_on(stack, follow_port(&node.ports[1]));
+            // fall through
+        case 1:
+            focus_on(stack, follow_port(&node.ports[0])); //
+            break;
+        default: COMPILER_UNREACHABLE();
+        }
+    }
+
+    free(stack);
+
+    return collection;
 }
+
+#define PROCESS_NODE_IN_PHASE(graph, node)                                     \
+    do {                                                                       \
+        debug("%s(%s)", __func__, print_node(node));                           \
+        wait_for_user(*graph);                                                 \
+    } while (false)
 
 COMPILER_NONNULL(1) //
 static void
@@ -2323,32 +2338,40 @@ unwind(struct node_graph *const restrict graph) {
 
     graph->current_phase = PHASE_UNWIND;
 
-    // clang-format off
-    struct node_list *applicators = iterate_nodes(graph, SYMBOL_RANGE_1(SYMBOL_APPLICATOR));
-    // clang-format on
+    struct node_list *applicators =
+        iterate_nodes(graph, SYMBOL_RANGE_1(SYMBOL_APPLICATOR));
 
     ITERATE_LIST (iter, applicators) {
         const struct node node = iter->node;
         XASSERT(node.ports);
+        PROCESS_NODE_IN_PHASE(graph, node);
 
-        debug("%s(%s)", __func__, print_node(node));
-        wait_for_user(*graph);
-
-        uint64_t *const rator_port_target = DECODE_ADDRESS(node.ports[0]),
-                        *const applicator_port_target =
-                            DECODE_ADDRESS(node.ports[1]),
-                        *const rand_port_target = DECODE_ADDRESS(node.ports[2]);
-        XASSERT(rator_port_target);
-        XASSERT(applicator_port_target);
-        XASSERT(rand_port_target);
-
-        connect_ports(&node.ports[0], applicator_port_target);
-        connect_ports(&node.ports[1], rand_port_target);
-        connect_ports(&node.ports[2], rator_port_target);
+        // clang-format off
+        CONNECT_NODE(node,
+            DECODE_ADDRESS(node.ports[1]), DECODE_ADDRESS(node.ports[2]), DECODE_ADDRESS(node.ports[0]));
+        // clang-format on
     }
 
     CONSUME_LIST (iter, applicators) {
         register_node_if_active(graph, iter->node);
+    }
+}
+
+COMPILER_NONNULL(1) //
+static void
+register_active_scopes(
+    struct node_graph *const restrict graph,
+    struct node_list *new_scopes) {
+    assert(graph);
+
+    CONSUME_LIST (iter, new_scopes) {
+        const struct node f = iter->node, g = follow_port(&iter->node.ports[0]);
+
+        // Protect from focusing on both active scopes.
+        // See <https://github.com/etiams/lambdaspeed/issues/2>.
+        if (!(SYMBOL_S == g.ports[-1] && compare_node_ptrs(f, g) > 0)) {
+            register_node_if_active(graph, f);
+        }
     }
 }
 
@@ -2360,40 +2383,22 @@ scope_remove(struct node_graph *const restrict graph) {
 
     graph->current_phase = PHASE_SCOPE_REMOVE;
 
-    struct node_list *delimiters = iterate_nodes(graph, DELIMITER_RANGE),
-                     *new_scopes = NULL;
-
-    CONSUME_LIST (iter, delimiters) {
+    struct node_list *new_scopes = NULL;
+    CONSUME_LIST (iter, iterate_nodes(graph, DELIMITER_RANGE)) {
         const struct node node = iter->node;
         XASSERT(node.ports);
-
-        debug("%s(%s)", __func__, print_node(node));
-        wait_for_user(*graph);
-
-        uint64_t *const port_0_target = DECODE_ADDRESS(node.ports[0]),
-                        *const port_1_target = DECODE_ADDRESS(node.ports[1]);
-        XASSERT(port_0_target);
-        XASSERT(port_1_target);
+        PROCESS_NODE_IN_PHASE(graph, node);
 
         const struct node scope = alloc_node(graph, SYMBOL_S);
-        connect_ports(&scope.ports[0], port_1_target);
-        connect_ports(&scope.ports[1], port_0_target);
+        // clang-format off
+        CONNECT_NODE(scope, DECODE_ADDRESS(node.ports[1]), DECODE_ADDRESS(node.ports[0]));
+        // clang-format on
+        new_scopes = visit(new_scopes, scope);
 
         free_node(node);
-        new_scopes = visit(new_scopes, scope);
     }
 
-    CONSUME_LIST (iter, new_scopes) {
-        const struct node f = iter->node, //
-            g = follow_port(&iter->node.ports[0]);
-
-        // Protect from focusing on both active scopes.
-        // See <https://github.com/etiams/lambdaspeed/issues/2>.
-        if (!(SYMBOL_S == g.ports[-1] &&
-              (intptr_t)f.ports > (intptr_t)g.ports)) {
-            register_node_if_active(graph, f);
-        }
-    }
+    register_active_scopes(graph, new_scopes);
 }
 
 COMPILER_NONNULL(1) //
@@ -2404,33 +2409,23 @@ loop_cut(struct node_graph *const restrict graph) {
 
     graph->current_phase = PHASE_LOOP_CUT;
 
-    // clang-format off
-    struct node_list *lambdas = iterate_nodes(graph, SYMBOL_RANGE_1(SYMBOL_LAMBDA));
-    // clang-format on
-
-    CONSUME_LIST (iter, lambdas) {
+    CONSUME_LIST (iter, iterate_nodes(graph, SYMBOL_RANGE_1(SYMBOL_LAMBDA))) {
         const struct node node = iter->node;
         XASSERT(node.ports);
-
-        debug("%s(%s)", __func__, print_node(node));
-        wait_for_user(*graph);
+        PROCESS_NODE_IN_PHASE(graph, node);
 
         struct node side_eraser = alloc_node(graph, SYMBOL_ERASER);
         struct node bottom_eraser = alloc_node(graph, SYMBOL_ERASER);
-        uint64_t *const disconnected_port_backup =
-            DECODE_ADDRESS(node.ports[1]);
-        XASSERT(disconnected_port_backup);
+        uint64_t *const binder_port = DECODE_ADDRESS(node.ports[1]);
 
         connect_ports(&node.ports[1], &side_eraser.ports[0]);
-        connect_ports(&bottom_eraser.ports[0], disconnected_port_backup);
-
-        XASSERT(DECODE_ADDRESS(node.ports[1]));
-        XASSERT(DECODE_ADDRESS(side_eraser.ports[0]));
-        XASSERT(DECODE_ADDRESS(bottom_eraser.ports[0]));
+        connect_ports(&bottom_eraser.ports[0], binder_port);
 
         register_node_if_active(graph, bottom_eraser);
     }
 }
+
+#undef PROCESS_NODE_IN_PHASE
 
 // Conversion to a lambda term string
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
