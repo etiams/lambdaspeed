@@ -1147,6 +1147,12 @@ assign_port_0: ports[0] = PORT_VALUE(0);
     return (struct node){ports};
 }
 
+// clang-format off
+#ifdef LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS
+static void clear_graphviz_cluster_node(const struct node node);
+#endif
+// clang-format on
+
 COMPILER_HOT //
 static void
 free_node(const struct node node) {
@@ -1157,6 +1163,10 @@ free_node(const struct node node) {
     const uint64_t symbol = node.ports[-1];
     XASSERT(SYMBOL_ROOT != symbol);
     XASSERT(SYMBOL_GARBAGE != symbol);
+
+#ifdef LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS
+    clear_graphviz_cluster_node(node);
+#endif
 
     uint64_t *const p = node.ports;
 
@@ -2043,8 +2053,8 @@ annihilate(
     graph->nannihilations++;
 #endif
 
-    clear_graphviz_cluster_node(f);
-    clear_graphviz_cluster_node(g);
+    // There are no new nodes to draw a Graphviz cluster.
+    (void)0;
 }
 
 COMPILER_UNUSED static const Rule annihilate_type_check = annihilate;
@@ -2161,8 +2171,6 @@ prologue:;
     graph->ncommutations++;
 #endif
 
-    clear_graphviz_cluster_node(f);
-    clear_graphviz_cluster_node(g);
     graphviz_commute_cluster(f_updates, g_updates, m, n);
 }
 
@@ -2204,7 +2212,6 @@ beta(
     register_node_if_active(graph, rhs);
 
     const struct node binder = follow_port(&g.ports[1]);
-
     if (SYMBOL_ERASER == binder.ports[-1]) {
         // There is a chance that the argument is fully disconnected from the
         // root; if so, we must garbage-collect it.
@@ -2215,9 +2222,9 @@ beta(
     graph->nbetas++;
 #endif
 
-    clear_graphviz_cluster_node(f);
-    clear_graphviz_cluster_node(g);
-    graphviz_beta_cluster(&lhs.ports[0], &rhs.ports[0]);
+    if (!is_garbage_node(&binder.ports[0])) {
+        graphviz_beta_cluster(&lhs.ports[0], &rhs.ports[0]);
+    }
 }
 
 COMPILER_UNUSED static const Rule beta_type_check = beta;
