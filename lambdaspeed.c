@@ -41,6 +41,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // each interaction step (requires Graphviz).
 // `LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS` -- generate blue rectangular
 // containers for Beta & commutation interactionnes.
+// `LAMBDASPEED_MULTIFOCUS_COUNT` -- the initial number of nodes for the
+// contiguous segment of multifocuses.
 
 // Option consistency checks
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -966,10 +968,14 @@ is_visited(
 // Graphs (nets) of nodes
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
+#ifndef LAMBDASPEED_MULTIFOCUS_COUNT
+#define LAMBDASPEED_MULTIFOCUS_COUNT (1024 * 1024)
+#endif
+
 struct multifocus {
-    struct node initial[8192];
-    struct node_list *rest;
     size_t count;
+    struct node initial[LAMBDASPEED_MULTIFOCUS_COUNT];
+    struct node_list *fallback;
 };
 
 COMPILER_NONNULL(1) COMPILER_HOT COMPILER_FLATTEN //
@@ -983,7 +989,7 @@ focus_on(struct multifocus *const restrict focus, const struct node node) {
     if (focus->count < ARRAY_LENGTH(focus->initial)) {
         focus->initial[focus->count] = node;
     } else {
-        focus->rest = visit(focus->rest, node);
+        focus->fallback = visit(focus->fallback, node);
     }
 
     focus->count++;
@@ -998,7 +1004,7 @@ unfocus(struct multifocus *const restrict focus) {
     focus->count--;
     return focus->count < ARRAY_LENGTH(focus->initial)
                ? focus->initial[focus->count]
-               : unvisit(&focus->rest);
+               : unvisit(&focus->fallback);
 }
 
 #define CONSUME_FOCUS(focus, f)                                                \
