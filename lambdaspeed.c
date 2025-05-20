@@ -693,7 +693,7 @@ xcalloc(const size_t n, const size_t size) {
         void *const object = (void *)self->next_free_chunk;                    \
         self->next_free_chunk = self->next_free_chunk->next;                   \
                                                                                \
-        return (uint64_t *)object + 1 /* passe the symbol */;                  \
+        return (uint64_t *)object + 1 /* pass the symbol */;                   \
     }                                                                          \
                                                                                \
     COMPILER_NONNULL(1, 2) COMPILER_HOT /* */                                  \
@@ -704,7 +704,7 @@ xcalloc(const size_t n, const size_t size) {
         XASSERT(self->buckets);                                                \
         assert(object);                                                        \
                                                                                \
-        object--; /* return to the symbol address */                           \
+        object--; /* back to the symbol address */                             \
         union prefix##_chunk *const freed = (union prefix##_chunk *)object;    \
         CLEAR_MEMORY(freed);                                                   \
         freed->next = self->next_free_chunk;                                   \
@@ -2765,7 +2765,7 @@ of_lambda_term(struct lambda_term *const restrict term) {
 COMPILER_NONNULL(2) COMPILER_OPTIMIZE("O0") /* for benchmarking */ //
 static void
 algorithm(
-    FILE *const restrict stream, // if `NULL`, doe not read back
+    FILE *const restrict stream, // if `NULL`, do not read back
     struct lambda_term *const restrict term) {
     debug("%s()", __func__);
 
