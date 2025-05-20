@@ -2230,9 +2230,6 @@ beta(
 
 COMPILER_UNUSED static const Rule beta_type_check = beta;
 
-// The x-rules normalization loop
-// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-
 COMPILER_NONNULL(1, 2) COMPILER_HOT //
 static void
 interact(
@@ -2258,26 +2255,6 @@ interact(
 cleanup:
     free_node(f);
     free_node(g);
-}
-
-COMPILER_NONNULL(1) //
-static void
-normalize_x_rules(struct node_graph *const restrict graph) {
-    debug("%s()", __func__);
-
-    assert(graph);
-
-    do {
-        if (!graph->is_reading_back) {
-            CONSUME_FOCUS (graph->betas, f) { interact(graph, beta, f); }
-        }
-        CONSUME_FOCUS (graph->annihilations, f) {
-            interact(graph, annihilate, f);
-        }
-        CONSUME_FOCUS (graph->commutations, f) { //
-            interact(graph, commute, f);
-        }
-    } while (!is_normalized_graph(graph));
 }
 
 // The read-back phases
@@ -2570,8 +2547,8 @@ count_binder_usage(
 
     switch (term->ty) {
     case LAMBDA_TERM_APPLICATOR: {
-        struct lambda_term *const rator = term->payload.applicator.rator,
-                                  *const rand = term->payload.applicator.rand;
+        struct lambda_term *const rator = term->payload.applicator.rator, //
+            *const rand = term->payload.applicator.rand;
         XASSERT(rator);
         XASSERT(rand);
 
@@ -2668,8 +2645,8 @@ go_of_lambda_term(
 
     switch (term->ty) {
     case LAMBDA_TERM_APPLICATOR: {
-        struct lambda_term *const rator = term->payload.applicator.rator,
-                                  *const rand = term->payload.applicator.rand;
+        struct lambda_term *const rator = term->payload.applicator.rator, //
+            *const rand = term->payload.applicator.rand;
         XASSERT(rator);
         XASSERT(rand);
 
@@ -2763,6 +2740,24 @@ of_lambda_term(struct lambda_term *const restrict term) {
 // The complete algorithm
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
+COMPILER_NONNULL(1) //
+static void
+normalize_x_rules(struct node_graph *const restrict graph) {
+    debug("%s()", __func__);
+
+    assert(graph);
+
+    do {
+        if (!graph->is_reading_back) {
+            CONSUME_FOCUS (graph->betas, f) { interact(graph, beta, f); }
+        }
+        // clang-format off
+        CONSUME_FOCUS (graph->annihilations, f) { interact(graph, annihilate, f); }
+        // clang-format on
+        CONSUME_FOCUS (graph->commutations, f) { interact(graph, commute, f); }
+    } while (!is_normalized_graph(graph));
+}
+
 COMPILER_NONNULL(2) COMPILER_OPTIMIZE("O0") /* for benchmarking */ //
 static void
 algorithm(
@@ -2794,29 +2789,26 @@ algorithm(
 
     ITERATE_ONCE (
         finish, graph.is_reading_back = true, graph.is_reading_back = false) {
-        // Phase #1.
-        {
-            unwind(&graph);
-            graphviz(&graph, "target/1-unwound.dot");
-            normalize_x_rules(&graph);
-            graphviz(&graph, "target/1-unwoundx.dot");
-        }
+        // Phase #1 {
+        unwind(&graph);
+        graphviz(&graph, "target/1-unwound.dot");
+        normalize_x_rules(&graph);
+        graphviz(&graph, "target/1-unwoundx.dot");
+        // }
 
-        // Phase #2.
-        {
-            scope_remove(&graph);
-            graphviz(&graph, "target/2-unscoped.dot");
-            normalize_x_rules(&graph);
-            graphviz(&graph, "target/2-unscopedx.dot");
-        }
+        // Phase #2 {
+        scope_remove(&graph);
+        graphviz(&graph, "target/2-unscoped.dot");
+        normalize_x_rules(&graph);
+        graphviz(&graph, "target/2-unscopedx.dot");
+        // }
 
-        // Phase #3.
-        {
-            loop_cut(&graph);
-            graphviz(&graph, "target/3-unlooped.dot");
-            normalize_x_rules(&graph);
-            graphviz(&graph, "target/3-unloopedx.dot");
-        }
+        // Phase #3 {
+        loop_cut(&graph);
+        graphviz(&graph, "target/3-unlooped.dot");
+        normalize_x_rules(&graph);
+        graphviz(&graph, "target/3-unloopedx.dot");
+        // }
     }
 
     to_lambda_string(stream, 0, follow_port(&graph.root.ports[1]));
