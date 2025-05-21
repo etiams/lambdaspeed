@@ -4,9 +4,9 @@ synopsis: "An OCaml NbE implementation of the pure lambda calculus"
 maintainer: ["Louis F. Ashfield <louis.ashfield@proton.me>"]
 authors: ["Louis F. Ashfield <louis.ashfield@proton.me>"]
 license: "BSD-3-Clause"
-homepage: "https://github.com/etiams/lambdaspeed"
-doc: "https://github.com/etiams/lambdaspeed"
-bug-reports: "https://github.com/etiams/lambdaspeed/issues"
+homepage: "https://github.com/etiams/optiscope"
+doc: "https://github.com/etiams/optiscope"
+bug-reports: "https://github.com/etiams/optiscope/issues"
 depends: [
   "dune" {>= "3.18"}
   "ocaml"
@@ -26,5 +26,5 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/etiams/lambdaspeed.git"
+dev-repo: "git+https://github.com/etiams/optiscope.git"
 x-maintenance-intent: ["(latest)"]

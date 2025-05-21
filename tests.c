@@ -1,11 +1,4 @@
-// #define LAMBDASPEED_ENABLE_TRACING
-// #define LAMBDASPEED_ENABLE_STEP_BY_STEP
-// #define LAMBDASPEED_ENABLE_STATS
-// #define LAMBDASPEED_ENABLE_GRAPHVIZ
-// #define LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS
-#define LAMBDASPEED_MULTIFOCUS_COUNT 128
-
-#include "lambdaspeed.h"
+#include "optiscope.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -31,7 +24,7 @@ test_case(
         return;
     }
 
-    lambdaspeed_algorithm(fp, f());
+    optiscope_algorithm(fp, f());
 
     rewind(fp);
     for (size_t i = 0; i < strlen(expected); i++) {
@@ -45,7 +38,7 @@ test_case(
         fprintf(stderr, "%s\n", expected);
         fprintf(stderr, "Received:\n" TAB);
         rewind(fp);
-        lambdaspeed_redirect_stream(fp, stderr);
+        optiscope_redirect_stream(fp, stderr);
         fprintf(stderr, "\n");
 
 #undef TAB
@@ -92,7 +85,7 @@ i_combinator(void) {
     return lambda(x, var(x));
 }
 
-// Suggested in <https://github.com/etiams/lambdaspeed/issues/2>.
+// Suggested in <https://github.com/etiams/optiscope/issues/2>.
 static struct lambda_term *
 skk_test(void) {
     return applicator(
@@ -136,7 +129,7 @@ iota_combinator_test(void) {
         applicator(k_combinator(), k_combinator()));
 }
 
-// Inspired by <https://github.com/etiams/lambdaspeed/issues/2>.
+// Inspired by <https://github.com/etiams/optiscope/issues/2>.
 static struct lambda_term *
 self_iota_combinator_test(void) {
     return applicator(iota_combinator_test(), iota_combinator_test());
@@ -662,7 +655,7 @@ y_fibonacci_test(void) {
 // The WHY combinator
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-// See the discission in <https://github.com/etiams/lambdaspeed/issues/1>.
+// See the discission in <https://github.com/etiams/optiscope/issues/1>.
 static struct lambda_term *
 why_combinator(void) {
     struct lambda_term *f, *u, *a, *f2, *d, *u2, *i, *x;
@@ -817,7 +810,7 @@ wadsworth_counterexample(void) { // Asperti & Guerrini
 
 int
 main(void) {
-    lambdaspeed_open_pools();
+    optiscope_open_pools();
 
     puts("Running the test cases...");
 
@@ -852,7 +845,7 @@ main(void) {
     TEST_CASE(wadsworth_example, "(λ (0 0))");
     TEST_CASE(wadsworth_counterexample, "(λ (λ (1 0)))");
 
-    lambdaspeed_close_pools();
+    optiscope_close_pools();
 }
 
 #endif // BENCHMARKS

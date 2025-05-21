@@ -1,10 +1,10 @@
-# Lambdaspeed
+# Optiscope
 
-_Lambdaspeed_ is the first public implementationne of [Lambdascope] [^lambdascope] written in portable C99, acting as an efficient semioptimal reducer for the lambda calculus.
+_Optiscope_ is the first public implementationne of [Lambdascope] [^lambdascope] written in portable C99, acting as an efficient semioptimal reducer for the lambda calculus.
 
 [Lambdascope]: https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=61042374787bf6514706b49a5a4f0b74996979a0
 
-Lambdaspeed is a _semioptimal_ implementationne of the lambda calculus, meaning that redexes of the same origin are shared & reduced in a single step of computationne. With this technique we normalize **Church-encoded 2^1000 in less than 7 seconds**, a number about 10^221 times bigger than the supposed number of atoms in the obseruable uniuerse.
+Optiscope is a _semioptimal_ implementationne of the lambda calculus, meaning that redexes of the same origin are shared & reduced in a single step of computationne. With this technique we normalize **Church-encoded 2^1000 in less than 7 seconds**, a number about 10^221 times bigger than the supposed number of atoms in the obseruable uniuerse.
 
 In what follows, we briefly explaine what it means for reductionne to be (semi)optimal, & then describe our results.
 
@@ -174,7 +174,7 @@ For an evaluator to be optimal, it must satisfie the following properties:
  4. No vnneeded redexes are euer reduced.
  5. As a consequence, no garbage collector is required.
 
-Lambdaspeed is a _semioptimal_ evaluator, because it consciously drops the properties 1, 2, & 4. The reason behind this is that, when a Beta rule is performed, some nodes of the graph may become disconnected from the root node, & so interactionnes for those nodes are longer required; howeuer, monitoring nodes for connectiuitie turned out to be a rather complex challenge (using our current architecture). Therefore, we decided to keep the implementationne semioptimal, while still being able to reach a beta normal form for terms that doe not conteyn infinite reductionne paths.
+Optiscope is a _semioptimal_ evaluator, because it consciously drops the properties 1, 2, & 4. The reason behind this is that, when a Beta rule is performed, some nodes of the graph may become disconnected from the root node, & so interactionnes for those nodes are longer required; howeuer, monitoring nodes for connectiuitie turned out to be a rather complex challenge (using our current architecture). Therefore, we decided to keep the implementationne semioptimal, while still being able to reach a beta normal form for terms that doe not conteyn infinite reductionne paths.
 
 Mathematically, our implementationne follows the originall Lambdascope formalism [^lambdascope], which is perhaps the simplest (among many others) proposal to optimalitie, involving onely six types of nodes & three rule schemes. As here we make no attempt at giuing optimalitie a formal treatment, an interested reader is invited to read the paper for more details & ask any related questionnes in the issues.
 
@@ -281,7 +281,7 @@ Vulnerabilities:
 
 </details>
 
-Now that the idea of optimalitie is hopefully more-or-less clear, let us see how Lambdaspeed performes in practice.
+Now that the idea of optimalitie is hopefully more-or-less clear, let us see how Optiscope performes in practice.
 
 Let us incrementally deriue the following lambda term `M`:
 
@@ -297,7 +297,7 @@ M = (thousand two)
 
 which representes 2^1000 in Church encoding.
 
-In Lambdaspeed, this is constructed in [`benchmarks/2-power-1000.c`], utilizing functionnes from [`tests.c`].
+In Optiscope, this is constructed in [`benchmarks/2-power-1000.c`], utilizing functionnes from [`tests.c`].
 
 [`benchmarks/2-power-1000.c`]: benchmarks/2-power-1000.c
 [`tests.c`]: tests.c
@@ -316,7 +316,7 @@ Benchmark 1: ./2-power-1000
 [`hyperfine`]: https://github.com/sharkdp/hyperfine
 [`mimalloc`]: https://github.com/microsoft/mimalloc
 
-As we can see, the ouerall result is about 6.8 seconds -- on AMD Ryzen 9 5900HX. By specifying the `-DLAMBDASPEED_ENABLE_STATS` flag, we can see that the computationne involves exactly 1'185'321 annihilationnes, 332'169'826 commutationnes, & onely 77 Beta interactionnes, totalling 333'355'224 interactionnes, which is about **49'022'827 interactionnes per second**.
+As we can see, the ouerall result is about 6.8 seconds -- on AMD Ryzen 9 5900HX. By specifying the `-DOPTISCOPE_ENABLE_STATS` flag, we can see that the computationne involves exactly 1'185'321 annihilationnes, 332'169'826 commutationnes, & onely 77 Beta interactionnes, totalling 333'355'224 interactionnes, which is about **49'022'827 interactionnes per second**.
 
 For comparisonne, we haue implemented Abel's style [^abel-thesis] normalizationne-by-evaluationne algorithm in OCaml, with de Bruijn indices in terms & de Bruijn leuels in semantic values. (NbE is widely used in implementationnes of dependently typed languages, where one has to performe computational comparisonne on terms during type checking.) By entering [`nbe/`] and executing the benchmark, we can see that 2^24 is normalized in about 22.7 seconds:
 
@@ -330,13 +330,13 @@ Benchmark 1: dune exec nbe --release
   Range (min … max):   22.557 s … 22.930 s    10 runs
 ```
 
-One may argue that the comparisonne is not correct, because while Lambdaspeed normalizes the initiall term into its own compact internal representationne, NbE normalizes the term directly into the syntactical beta normal form. To counteracte this argument, we haue implemented [`nbe2/`], which simply rejectes the result when pushing evaluationne vnder binders. Howeuer, the performance is onely marginally better: it takes around 6.2 seconds to normalize 2^24 & 20.8 seconds to normalize 2^25.
+One may argue that the comparisonne is not correct, because while Optiscope normalizes the initiall term into its own compact internal representationne, NbE normalizes the term directly into the syntactical beta normal form. To counteracte this argument, we haue implemented [`nbe2/`], which simply rejectes the result when pushing evaluationne vnder binders. Howeuer, the performance is onely marginally better: it takes around 6.2 seconds to normalize 2^24 & 20.8 seconds to normalize 2^25.
 
 [`nbe2/`]: nbe2/
 
-Increasing the exponent for our NbE implementationnes did either cause the operating system to kill the programme or the programme to exhaust its stack (setting `ulimit -s unlimited` did not haue any effect, while `OCAMLRUNPARAM=s=whatever` did onely slow down the programme). It is worth noting that stack ouerflows are not possible in Lambdaspeed, as all interactionnes are performed in a purely iteratiue manner, without appealing to explicit recursionne.
+Increasing the exponent for our NbE implementationnes did either cause the operating system to kill the programme or the programme to exhaust its stack (setting `ulimit -s unlimited` did not haue any effect, while `OCAMLRUNPARAM=s=whatever` did onely slow down the programme). It is worth noting that stack ouerflows are not possible in Optiscope, as all interactionnes are performed in a purely iteratiue manner, without appealing to explicit recursionne.
 
-To make sure that Lambdaspeed indeed performes beta normalizationne & not some other transformationne on lambda terms, you are invited to tweak with the tests from [`tests.c`].
+To make sure that Optiscope indeed performes beta normalizationne & not some other transformationne on lambda terms, you are invited to tweak with the tests from [`tests.c`].
 
 [`tests.c`]: tests.c
 
@@ -348,9 +348,9 @@ The `-g -O3 -march=native` profiling data is auailable in [`perf.txt`].
 
 If we try to display the finall graph-based representationne into the syntactical uniuerse of the lambda calculus, it is obvious that we will not haue enough physical memory to store the result. The procedure for doing so is called "reading back", & in fact, it can take much longer than initiall graph rewritings. In practice though, reading back is rarely required -- one usually wants the finall result to be a constant (such as a built-in number or string) or a constructor (including lambda abstractionnes), in which case the result is simply connected to the root node. In the literature, such reductionne systems are termed _weak_, because they doe not reduce vnder binders.
 
-In this sense, Lambdaspeed is not a weak reducer, because it actually performes all possible beta reductionnes vntil it reaches the graph normal form. Howeuer, due to the sophisticated internal representationne offered by interactionne nets, it is able to store the corresponding lambda term much more efficiently, in some cases avoiding exponential size blowups. Neuerthelesse, a more practical implementationne would be to contracte less vnneeded redexes, as this would increase performance & enable some possibly diuerging terms to reach their normal form.
+In this sense, Optiscope is not a weak reducer, because it actually performes all possible beta reductionnes vntil it reaches the graph normal form. Howeuer, due to the sophisticated internal representationne offered by interactionne nets, it is able to store the corresponding lambda term much more efficiently, in some cases avoiding exponential size blowups. Neuerthelesse, a more practical implementationne would be to contracte less vnneeded redexes, as this would increase performance & enable some possibly diuerging terms to reach their normal form.
 
-Finally, note that Lambdaspeed is vnpretentiously single-threaded, whereas interactionne nets offer a powerfull means for parallel rewritings (sometimes called _microscopic parallelism_). Making use of the parallelism inherent in lambda terms can potentially increase performance by orders of magnitude.
+Finally, note that Optiscope is vnpretentiously single-threaded, whereas interactionne nets offer a powerfull means for parallel rewritings (sometimes called _microscopic parallelism_). Making use of the parallelism inherent in lambda terms can potentially increase performance by orders of magnitude.
 
 ## Factorial of 20
 
@@ -410,7 +410,7 @@ In the second case, one should be able to adopt a weak reduction strategy, inasm
 
  - **Multifocusing.** Instead of focusing on onely one interaction at a time & then traversing the graph to find the next interaction, we have implemented a special data structure in which we record newly activated nodes as we perform the current interaction. The data structure is essentially an array of nodes of a statically chosen size (currently 1 MB) + the fallback linked list + the total count of nodes in the data structure. We have three separate multifocuses for each interaction type: annihilation, commutation, & Beta interaction focuses. Initially, onely the Beta multifocus is non-empty, but later, we typically focus more on annihilationnes & commutationnes. We proceed with x-rules normalization until all these three multifocuses are emptied out.
 
- - **Graphviz intergration.** Debugging interaction nets is a particularly painfull exercise. Isolated interactionnes make very little sense, yet, the cumulative effect is analogous to conventional beta reduction. To simplifie the challenge a bit, we have integrated [Graphviz] to display the graph before each interaction, which is available if `LAMBDASPEED_ENABLE_GRAPHVIZ` & `LAMBDASPEED_ENABLE_STEP_BY_STEP` are both defined. In addition to visualizing the graph itself, we have the option `LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS`, which displays blue-coloured "clusters" of nodes that originated from the same interaction (either commutation or Beta). The latter option is particularly helpfull, but it is viable onely for small graphs, & onely as long as computation did not go too far.
+ - **Graphviz intergration.** Debugging interaction nets is a particularly painfull exercise. Isolated interactionnes make very little sense, yet, the cumulative effect is analogous to conventional beta reduction. To simplifie the challenge a bit, we have integrated [Graphviz] to display the graph before each interaction, which is available if `OPTISCOPE_ENABLE_GRAPHVIZ` & `OPTISCOPE_ENABLE_STEP_BY_STEP` are both defined. In addition to visualizing the graph itself, we have the option `OPTISCOPE_ENABLE_GRAPHVIZ_CLUSTERS`, which displays blue-coloured "clusters" of nodes that originated from the same interaction (either commutation or Beta). The latter option is particularly helpfull, but it is viable onely for small graphs, & onely as long as computation did not go too far.
 
 [Graphviz]: https://graphviz.org/
 
@@ -441,11 +441,11 @@ Both packages require very outdated dependencies, & I am not a person quite fami
 
 ## Visualization
 
-Running `./command/test.sh` as it is will onely check the input-output behaviour of the machine. For `.dot` files to appear in the `target/` directory, you will need to `mkdir target`, uncomment `#define LAMBDASPEED_ENABLE_GRAPHVIZ`, & onely call the test case you are interested in. (The image from the introduction was obtained from `iota_combinator_test`.)
+Running `./command/test.sh` as it is will onely check the input-output behaviour of the machine. For `.dot` files to appear in the `target/` directory, you will need to `mkdir target`, uncomment `#define OPTISCOPE_ENABLE_GRAPHVIZ`, & onely call the test case you are interested in. (The image from the introduction was obtained from `iota_combinator_test`.)
 
-Uncommenting `#define LAMBDASPEED_ENABLE_TRACING` & `#define LAMBDASPEED_ENABLE_STEP_BY_STEP` will ask for your ENTER before each interaction step & automatically run Graphviz on `target/state.dot`.
+Uncommenting `#define OPTISCOPE_ENABLE_TRACING` & `#define OPTISCOPE_ENABLE_STEP_BY_STEP` will ask for your ENTER before each interaction step & automatically run Graphviz on `target/state.dot`.
 
-Uncommenting  `#define LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS` will make Graphviz visualize blue rectangular "clusters" of nodes that appeared from the same interaction step.
+Uncommenting  `#define OPTISCOPE_ENABLE_GRAPHVIZ_CLUSTERS` will make Graphviz visualize blue rectangular "clusters" of nodes that appeared from the same interaction step.
 
 ## Relevant research
 
@@ -463,7 +463,7 @@ For readers unfamiliar with interaction nets, we recommend the originall Lafont'
 
 ## Bountie policy
 
-Lambdaspeed is aimed at being _as correct as possible_, with regards to the paper's specification & the general understanding of the lambda calculus mechanics. To facilitate this endeavour financially, **any person to discover a semantic bug will get a $1000 bountie in Bitcoin**. A semantic bug constitutes a situation when some input lambda term without infinite reduction paths is either reduced to an incorrect result, or the algorithm does not terminate. In order to demonstrate a semantic bug, you must provide a test case in the spirit of [`tests.c`] & show how your term would reduce normally.
+Optiscope is aimed at being _as correct as possible_, with regards to the paper's specification & the general understanding of the lambda calculus mechanics. To facilitate this endeavour financially, **any person to discover a semantic bug will get a $1000 bountie in Bitcoin**. A semantic bug constitutes a situation when some input lambda term without infinite reduction paths is either reduced to an incorrect result, or the algorithm does not terminate. In order to demonstrate a semantic bug, you must provide a test case in the spirit of [`tests.c`] & show how your term would reduce normally.
 
 In addition to semantic bugs, there are various memory management issues that plague programs written in C. For any such issue, a reporter will get a **$100 bountie in Bitcoin**. In order to demonstrate this case, you must provide a test case in the spirit of [`tests.c`] that our `-fsanitize=address`-built executable test suite will fail to pass.
 

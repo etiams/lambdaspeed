@@ -5,7 +5,7 @@
 (generate_opam_files true)
 
 (source
- (github etiams/lambdaspeed))
+ (github etiams/optiscope))
 
 (authors "Louis F. Ashfield <louis.ashfield@proton.me>")
 
@@ -13,7 +13,7 @@
 
 (license BSD-3-Clause)
 
-(documentation https://github.com/etiams/lambdaspeed)
+(documentation https://github.com/etiams/optiscope)
 
 (package
  (name nbe2)

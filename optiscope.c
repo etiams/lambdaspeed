@@ -32,7 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Header inclusionnes
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-#include "lambdaspeed.h"
+#include "optiscope.h"
 
 #ifndef _DEFAULT_SOURCE
 #define _DEFAULT_SOURCE // in case we use glibc
@@ -269,7 +269,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     ((x = f(__VA_ARGS__)) < 0 ? (perror(#f), abort()) : (void)0)
 
 extern void
-lambdaspeed_redirect_stream(
+optiscope_redirect_stream(
     FILE *const restrict source,
     FILE *const restrict destination) {
     assert(source);
@@ -301,7 +301,7 @@ lambdaspeed_redirect_stream(
         culmination;                                                           \
     }
 
-#ifdef LAMBDASPEED_ENABLE_TRACING
+#ifdef OPTISCOPE_ENABLE_TRACING
 PRINTER(debug, stdout, /* empty */)
 #else
 #define debug(...) ((void)0)
@@ -729,7 +729,7 @@ POOLS
         XASSERT(pool_name); \
     }
 
-extern void lambdaspeed_open_pools(void) { POOLS }
+extern void optiscope_open_pools(void) { POOLS }
 
 #undef X
 
@@ -740,7 +740,7 @@ extern void lambdaspeed_open_pools(void) { POOLS }
         pool_name = NULL; \
     }
 
-extern void lambdaspeed_close_pools(void) { POOLS }
+extern void optiscope_close_pools(void) { POOLS }
 
 #undef X
 
@@ -814,7 +814,7 @@ xmalloc_node(const uint64_t symbol, const uint64_t phase) {
     return (struct node){ports};
 }
 
-#ifdef LAMBDASPEED_ENABLE_TRACING
+#ifdef OPTISCOPE_ENABLE_TRACING
 
 #define MAX_SNODE_SIZE 256
 
@@ -848,7 +848,7 @@ print_node(const struct node node) {
     return buffer;
 }
 
-#endif // LAMBDASPEED_ENABLE_TRACING
+#endif // OPTISCOPE_ENABLE_TRACING
 
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_HOT //
 inline static bool
@@ -950,7 +950,7 @@ unvisit(struct node_list **const restrict self) {
     return node;
 }
 
-#ifdef LAMBDASPEED_ENABLE_GRAPHVIZ
+#ifdef OPTISCOPE_ENABLE_GRAPHVIZ
 
 COMPILER_WARN_UNUSED_RESULT //
 static struct node_list *
@@ -979,18 +979,18 @@ is_visited(
         (history) = visit((history), node);                                    \
     } while (false)
 
-#endif // LAMBDASPEED_ENABLE_GRAPHVIZ
+#endif // OPTISCOPE_ENABLE_GRAPHVIZ
 
 // Graphs (nets) of nodes
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-#ifndef LAMBDASPEED_MULTIFOCUS_COUNT
-#define LAMBDASPEED_MULTIFOCUS_COUNT (1024 * 1024)
+#ifndef OPTISCOPE_MULTIFOCUS_COUNT
+#define OPTISCOPE_MULTIFOCUS_COUNT (1024 * 1024)
 #endif
 
 struct multifocus {
     size_t count;
-    struct node initial[LAMBDASPEED_MULTIFOCUS_COUNT];
+    struct node initial[OPTISCOPE_MULTIFOCUS_COUNT];
     struct node_list *fallback;
 };
 
@@ -1033,7 +1033,7 @@ struct node_graph {
     uint64_t current_phase;
     bool is_reading_back;
 
-#ifdef LAMBDASPEED_ENABLE_STATS
+#ifdef OPTISCOPE_ENABLE_STATS
     uint64_t nannihilations, ncommutations, nbetas, ninvocations;
 #endif
 };
@@ -1138,7 +1138,7 @@ assign_port_0: ports[0] = PORT_VALUE(0);
 }
 
 // clang-format off
-#ifdef LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS
+#ifdef OPTISCOPE_ENABLE_GRAPHVIZ_CLUSTERS
 static void clear_graphviz_cluster_node(const struct node node);
 #endif
 // clang-format on
@@ -1154,7 +1154,7 @@ free_node(const struct node node) {
     XASSERT(SYMBOL_ROOT != symbol);
     XASSERT(SYMBOL_GARBAGE != symbol);
 
-#ifdef LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS
+#ifdef OPTISCOPE_ENABLE_GRAPHVIZ_CLUSTERS
     clear_graphviz_cluster_node(node);
 #endif
 
@@ -1248,7 +1248,7 @@ register_node_if_active(
 // Graphviz graph generation
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-#ifdef LAMBDASPEED_ENABLE_GRAPHVIZ
+#ifdef OPTISCOPE_ENABLE_GRAPHVIZ
 
 // We use glibc-specific functionalitie for convenience. Windows support is not
 // & will never be planned.
@@ -1437,7 +1437,7 @@ graphviz_edge_tailport(
     }
 }
 
-#ifdef LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS
+#ifdef OPTISCOPE_ENABLE_GRAPHVIZ_CLUSTERS
 
 #define GRAPHVIZ_BEGIN_CLUSTER "// begin cluster"
 #define GRAPHVIZ_END_CLUSTER   "// end cluster"
@@ -1659,7 +1659,7 @@ exit:
 #undef GRAPHVIZ_END_CLUSTER
 #undef GRAPHVIZ_BEGIN_CLUSTER
 
-#endif // LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS
+#endif // OPTISCOPE_ENABLE_GRAPHVIZ_CLUSTERS
 
 inline static bool
 graphviz_is_either_root(const struct node f, const struct node g) {
@@ -1780,7 +1780,7 @@ graphviz(
     assert(graph);
     assert(filename);
 
-#ifdef LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS
+#ifdef OPTISCOPE_ENABLE_GRAPHVIZ_CLUSTERS
     if (NULL == graphviz_footer_fp) {
         // The file descriptor will be closed upon program termination.
         if (NULL == (graphviz_footer_fp = tmpfile())) {
@@ -1808,7 +1808,7 @@ graphviz(
     };
     go_graphviz(&ctx, graph->root, 0);
     ctx.history = unvisit_all(ctx.history);
-#ifdef LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS
+#ifdef OPTISCOPE_ENABLE_GRAPHVIZ_CLUSTERS
     {
         postprocess_graphviz_footer();
         const long length = ftell(graphviz_footer_fp);
@@ -1833,7 +1833,7 @@ graphviz(
 
 #define graphviz(graph, filename) ((void)0)
 
-#endif // LAMBDASPEED_ENABLE_GRAPHVIZ
+#endif // OPTISCOPE_ENABLE_GRAPHVIZ
 
 #ifndef DEFINED_graphviz_commute_cluster
 #define graphviz_commute_cluster(f_updates, g_updates, m, n) ((void)0)
@@ -1847,14 +1847,14 @@ graphviz(
 #define clear_graphviz_cluster_node(node) ((void)0)
 #endif
 
-#if !defined(NDEBUG) && defined(LAMBDASPEED_ENABLE_STEP_BY_STEP)
+#if !defined(NDEBUG) && defined(OPTISCOPE_ENABLE_STEP_BY_STEP)
 
 COMPILER_NONNULL(1) //
 static void
 wait_for_user(const struct node_graph *const restrict graph) {
     assert(graph);
 
-#ifdef LAMBDASPEED_ENABLE_GRAPHVIZ
+#ifdef OPTISCOPE_ENABLE_GRAPHVIZ
     graphviz(graph, "target/state.dot");
     if (system("./command/graphviz-state.sh") != 0) {
         panic("Failed to run `./command/graphviz-state.sh`!");
@@ -1872,7 +1872,7 @@ wait_for_user(const struct node_graph *const restrict graph) {
 
 #define wait_for_user(graph) ((void)0)
 
-#endif // !defined(NDEBUG) && defined(LAMBDASPEED_ENABLE_STEP_BY_STEP)
+#endif // !defined(NDEBUG) && defined(OPTISCOPE_ENABLE_STEP_BY_STEP)
 
 // Mark & sweep garbage collection
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -1975,7 +1975,7 @@ is_commutation(const struct node f, const struct node g) {
            f.ports[-1] != g.ports[-1];
 }
 
-#ifdef LAMBDASPEED_ENABLE_TRACING
+#ifdef OPTISCOPE_ENABLE_TRACING
 
 COMPILER_NONNULL(1, 2) //
 static void
@@ -2004,7 +2004,7 @@ debug_interaction(
 
 #define debug_interaction(caller, graph, f, g) ((void)0)
 
-#endif // LAMBDASPEED_ENABLE_TRACING
+#endif // OPTISCOPE_ENABLE_TRACING
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
@@ -2057,7 +2057,7 @@ annihilate(
 
     debug_interaction(__func__, graph, f, g);
 
-#ifdef LAMBDASPEED_ENABLE_STATS
+#ifdef OPTISCOPE_ENABLE_STATS
     graph->nannihilations++;
 #endif
 
@@ -2116,7 +2116,7 @@ prologue:;
 
     debug_interaction(__func__, graph, f, g);
 
-#ifdef LAMBDASPEED_ENABLE_STATS
+#ifdef OPTISCOPE_ENABLE_STATS
     graph->ncommutations++;
 #endif
 
@@ -2192,7 +2192,7 @@ beta(
 
     debug_interaction(__func__, graph, f, g);
 
-#ifdef LAMBDASPEED_ENABLE_STATS
+#ifdef OPTISCOPE_ENABLE_STATS
     graph->nbetas++;
 #endif
 
@@ -2263,7 +2263,7 @@ invoke_rule(
 
     debug_interaction(__func__, graph, f, g);
 
-#ifdef LAMBDASPEED_ENABLE_STATS
+#ifdef OPTISCOPE_ENABLE_STATS
     graph->ninvocations++;
 #endif
 
@@ -2392,7 +2392,7 @@ register_active_scopes(
         const struct node f = iter->node, g = follow_port(&iter->node.ports[0]);
 
         // Protect from focusing on both active scopes.
-        // See <https://github.com/etiams/lambdaspeed/issues/2>.
+        // See <https://github.com/etiams/optiscope/issues/2>.
         if (!(SYMBOL_S == g.ports[-1] && compare_node_ptrs(f, g) > 0)) {
             register_node_if_active(graph, f);
         }
@@ -2861,7 +2861,7 @@ of_lambda_term(struct lambda_term *const restrict term) {
         .current_phase = PHASE_INITIAL,
         .is_reading_back = false,
 
-#ifdef LAMBDASPEED_ENABLE_STATS
+#ifdef OPTISCOPE_ENABLE_STATS
         .nannihilations = 0,
         .ncommutations = 0,
         .nbetas = 0,
@@ -2903,7 +2903,7 @@ normalize_x_rules(struct node_graph *const restrict graph) {
 }
 
 extern void
-lambdaspeed_algorithm(
+optiscope_algorithm(
     FILE *const restrict stream,            // if `NULL`, do not read back
     struct lambda_term *const restrict term // must not be `NULL`
 ) {
@@ -2920,7 +2920,7 @@ lambdaspeed_algorithm(
         graphviz(&graph, "target/0-initialx.dot");
     }
 
-#ifdef LAMBDASPEED_ENABLE_STATS
+#ifdef OPTISCOPE_ENABLE_STATS
     printf("Annihilation interactions: %" PRIu64 "\n", graph.nannihilations);
     printf("Commutation interactions: %" PRIu64 "\n", graph.ncommutations);
     printf("Beta interactions: %" PRIu64 "\n", graph.nbetas);

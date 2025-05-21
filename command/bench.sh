@@ -20,7 +20,7 @@ fi
 
 for filename in benchmarks/*.c; do
     base_filename="$(basename $filename .c)"
-    $CC "$filename" lambdaspeed.c -o "$base_filename" $options
+    $CC "$filename" optiscope.c -o "$base_filename" $options
     LD_PRELOAD=$mimalloc hyperfine --warmup=$warmup --runs=$runs ./$base_filename
     rm "$base_filename"
 done

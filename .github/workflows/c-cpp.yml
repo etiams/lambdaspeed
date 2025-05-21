@@ -38,13 +38,13 @@ jobs:
         run: sudo apt install cppcheck clang-tidy -y
 
       - name: Run cppcheck
-        run: cppcheck lambdaspeed.c --force
+        run: cppcheck optiscope.c --force
 
       - name: Run clang-tidy
-        run: clang-tidy lambdaspeed.c
+        run: clang-tidy optiscope.c
 
       - name: Run GCC -fanalyzer
-        run: gcc lambdaspeed.c -c -o /dev/null -fanalyzer -Wno-analyzer-malloc-leak || true
+        run: gcc optiscope.c -c -o /dev/null -fanalyzer -Wno-analyzer-malloc-leak || true
 
   benchmark:
     runs-on: ubuntu-latest

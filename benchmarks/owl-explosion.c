@@ -26,9 +26,9 @@ owl_explosion(const uint64_t depth) {
 
 int
 main(void) {
-    lambdaspeed_open_pools();
+    optiscope_open_pools();
     struct lambda_term *term =
         applicator(owl_explosion(1000), owl_combinator());
-    lambdaspeed_algorithm(NULL, term);
-    lambdaspeed_close_pools();
+    optiscope_algorithm(NULL, term);
+    optiscope_close_pools();
 }
