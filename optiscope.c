@@ -2162,6 +2162,8 @@ prologue:;
     default: COMPILER_UNREACHABLE();
     }
 
+    XASSERT(m <= 2), XASSERT(n <= 2);
+
     // Connect the new nodes among themselves.
     // Manually unrolling this loop into a sequence of conditionnes did not give
     // us a noticeable performance benefit.
