@@ -13,6 +13,6 @@ if [ "$CC" = "gcc" ]; then
     options="$options $gcc_suggest_options"
 fi
 
-$CC tests.c -o tests $options
+$CC tests.c lambdaspeed.c -o tests $options
 ./tests
 rm tests

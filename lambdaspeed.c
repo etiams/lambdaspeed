@@ -29,48 +29,10 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-// Optionnes:
-// `NDEBUG` -- disable a plentitude of assertionnes & enable some compiler
-// builtins for micro-optimization.
-// `LAMBDASPEED_ENABLE_TRACING` -- enable detailed log tracing of the algorithm.
-// `LAMBDASPEED_ENABLE_STEP_BY_STEP` -- ask the user for ENTER before each
-// interaction step.
-// `LAMBDASPEED_ENABLE_STATS` -- enable run-time statistics (currently, onely
-// the total number of interactionnes).
-// `LAMBDASPEED_ENABLE_GRAPHVIZ` -- generate `target/state.dot(.svg)` before
-// each interaction step (requires Graphviz).
-// `LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS` -- generate blue rectangular
-// containers for Beta & commutation interactionnes.
-// `LAMBDASPEED_MULTIFOCUS_COUNT` -- the initial number of nodes for the
-// contiguous segment of multifocuses. 1 MB default.
-
-// Option consistency checks
-// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-
-#if (                                                                          \
-    defined(LAMBDASPEED_ENABLE_GRAPHVIZ) ||                                    \
-    defined(LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS)) &&                          \
-    defined(NDEBUG)
-#error `LAMBDASPEED_ENABLE_GRAPHVIZ` and `LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS` \
-are not compatible with `NDEBUG`!
-#endif
-
-#if defined(LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS) &&                           \
-    !defined(LAMBDASPEED_ENABLE_GRAPHVIZ)
-#error Define `LAMBDASPEED_ENABLE_GRAPHVIZ` to use `LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS`!
-#endif
-
-#if defined(LAMBDASPEED_ENABLE_STEP_BY_STEP) &&                                \
-    !defined(LAMBDASPEED_ENABLE_TRACING)
-#error `LAMBDASPEED_ENABLE_STEP_BY_STEP` requires `LAMBDASPEED_ENABLE_TRACING`!
-#endif
-
-#if defined(LAMBDASPEED_ENABLE_GRAPHVIZ) && !defined(__GNUC__)
-#error You are not eligible for Graphviz visualization.
-#endif
-
 // Header inclusionnes
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+#include "lambdaspeed.h"
 
 #define _DEFAULT_SOURCE
 #define _POSIX_SOURCE // in case we use glibc
@@ -163,8 +125,6 @@ are not compatible with `NDEBUG`!
 
 #ifndef __clang__
 
-#define COMPILER_OPTIMIZE(string) __attribute__((optimize(string)))
-
 #define COMPILER_MALLOC(deallocator, ptr_index)                                \
     __attribute__((malloc(deallocator, ptr_index)))
 
@@ -231,10 +191,6 @@ are not compatible with `NDEBUG`!
 
 #ifndef COMPILER_WARN_UNUSED_RESULT
 #define COMPILER_WARN_UNUSED_RESULT COMPILER_IGNORE
-#endif
-
-#ifndef COMPILER_OPTIMIZE
-#define COMPILER_OPTIMIZE COMPILER_IGNORE_WITH_ARGS
 #endif
 
 #ifndef COMPILER_MALLOC
@@ -306,18 +262,19 @@ are not compatible with `NDEBUG`!
 #define IO_CALL_ASSIGN(x, f, ...)                                              \
     ((x = f(__VA_ARGS__)) < 0 ? (perror(#f), abort()) : (void)0)
 
-COMPILER_NONNULL(1, 2) //
-static void
-redirect_stream(FILE *const restrict from, FILE *const restrict to) {
-    assert(from);
-    assert(to);
+extern void
+lambdaspeed_redirect_stream(
+    FILE *const restrict source,
+    FILE *const restrict destination) {
+    assert(source);
+    assert(destination);
 
     int c;
-    while (EOF != (c = fgetc(from))) {
-        if (EOF == fputc(c, to)) { perror("fputc"), abort(); }
+    while (EOF != (c = fgetc(source))) {
+        if (EOF == fputc(c, destination)) { perror("fputc"), abort(); }
     }
 
-    if (ferror(from) != 0) { perror("fgetc"), abort(); }
+    if (ferror(source) != 0) { perror("fgetc"), abort(); }
 }
 
 // Logging & panicking
@@ -748,7 +705,7 @@ POOLS
         XASSERT(pool_name); \
     }
 
-static void open_pools(void) { POOLS }
+extern void lambdaspeed_open_pools(void) { POOLS }
 
 #undef X
 
@@ -759,7 +716,7 @@ static void open_pools(void) { POOLS }
         pool_name = NULL; \
     }
 
-static void close_pools(void) { POOLS }
+extern void lambdaspeed_close_pools(void) { POOLS }
 
 #undef X
 
@@ -2459,7 +2416,7 @@ to_lambda_string(
     COMPILER_UNREACHABLE();
 }
 
-// Conversion from a lambda term
+// The lambda term interface
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 enum lambda_term_type {
@@ -2491,51 +2448,54 @@ struct lambda_term {
     union lambda_term_payload payload;
 };
 
-COMPILER_MALLOC(free, 1) COMPILER_WARN_UNUSED_RESULT COMPILER_RETURNS_NONNULL //
-static struct lambda_term *
-xmalloc_lambda_term(struct lambda_term term) {
-    struct lambda_term *const heaped = xmalloc(sizeof term);
-    *heaped = term;
-    return heaped;
-}
-
-COMPILER_WARN_UNUSED_RESULT COMPILER_RETURNS_NONNULL COMPILER_NONNULL(1, 2) //
-inline static struct lambda_term *
-applicator(struct lambda_term *const rator, struct lambda_term *const rand) {
+extern LambdaTerm
+applicator(const restrict LambdaTerm rator, const restrict LambdaTerm rand) {
     assert(rator), assert(rand);
 
-    return xmalloc_lambda_term((struct lambda_term){
-        .ty = LAMBDA_TERM_APPLICATOR,
-        .payload = {.applicator = {rator, rand}},
-    });
+    struct lambda_term *const term = xmalloc(sizeof *term);
+    term->ty = LAMBDA_TERM_APPLICATOR;
+    term->payload.applicator.rator = rator;
+    term->payload.applicator.rand = rand;
+
+    return term;
 }
 
-COMPILER_CONST COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) //
-inline static struct lambda_term
-prelambda(struct lambda_term *const body) {
-    assert(body);
+extern LambdaTerm
+prelambda(void) {
+    struct lambda_term *const term = xmalloc(sizeof *term);
+    term->ty = LAMBDA_TERM_LAMBDA;
+    term->payload.lambda.body = NULL;
+    term->payload.lambda.dup_ports = NULL;
+    term->payload.lambda.lvl = 0;
 
-    return (struct lambda_term){
-        .ty = LAMBDA_TERM_LAMBDA,
-        .payload = {.lambda = {body, .dup_ports = NULL}},
-    };
+    return term;
 }
 
-#define lambda(x, body)                                                        \
-    ((x) = xmalloc(sizeof *(x)), (*(x) = prelambda(body), (x)))
+extern LambdaTerm
+link_lambda_body(
+    const restrict LambdaTerm binder,
+    const restrict LambdaTerm body) {
+    assert(binder), assert(body);
 
-COMPILER_WARN_UNUSED_RESULT COMPILER_RETURNS_NONNULL COMPILER_NONNULL(1) //
-inline static struct lambda_term *
-prevar(struct lambda_payload *const lambda) {
-    assert(lambda);
+    binder->payload.lambda.body = body;
 
-    return xmalloc_lambda_term((struct lambda_term){
-        .ty = LAMBDA_TERM_VAR,
-        .payload = {.var = lambda},
-    });
+    return binder;
 }
 
-#define var(x) prevar(&(x)->payload.lambda)
+extern LambdaTerm
+var(const restrict LambdaTerm binder) {
+    assert(binder);
+    XASSERT(LAMBDA_TERM_LAMBDA == binder->ty);
+
+    struct lambda_term *const term = xmalloc(sizeof *term);
+    term->ty = LAMBDA_TERM_VAR;
+    term->payload.var = &binder->payload.lambda;
+
+    return term;
+}
+
+// Conversion from a lambda term
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1, 2) //
 static uint64_t
@@ -2758,11 +2718,11 @@ normalize_x_rules(struct node_graph *const restrict graph) {
     } while (!is_normalized_graph(graph));
 }
 
-COMPILER_NONNULL(2) COMPILER_OPTIMIZE("O0") /* for benchmarking */ //
-static void
-algorithm(
-    FILE *const restrict stream, // if `NULL`, do not read back
-    struct lambda_term *const restrict term) {
+extern void
+lambdaspeed_algorithm(
+    FILE *const restrict stream,            // if `NULL`, do not read back
+    struct lambda_term *const restrict term // must not be `NULL`
+) {
     debug("%s()", __func__);
 
     assert(term);

@@ -5,14 +5,15 @@
 // #define LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS
 #define LAMBDASPEED_MULTIFOCUS_COUNT 128
 
-#include "lambdaspeed.c"
+#include "lambdaspeed.h"
 
+#include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 // The testing machinery
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-COMPILER_NONNULL(1, 2, 3) //
 static void
 test_case(
     const char test_case_name[const restrict],
@@ -30,7 +31,7 @@ test_case(
         return;
     }
 
-    algorithm(fp, f());
+    lambdaspeed_algorithm(fp, f());
 
     rewind(fp);
     for (size_t i = 0; i < strlen(expected); i++) {
@@ -44,7 +45,7 @@ test_case(
         fprintf(stderr, "%s\n", expected);
         fprintf(stderr, "Received:\n" TAB);
         rewind(fp);
-        redirect_stream(fp, stderr);
+        lambdaspeed_redirect_stream(fp, stderr);
         fprintf(stderr, "\n");
 
 #undef TAB
@@ -816,7 +817,7 @@ wadsworth_counterexample(void) { // Asperti & Guerrini
 
 int
 main(void) {
-    open_pools();
+    lambdaspeed_open_pools();
 
     puts("Running the test cases...");
 
@@ -851,7 +852,7 @@ main(void) {
     TEST_CASE(wadsworth_example, "(λ (0 0))");
     TEST_CASE(wadsworth_counterexample, "(λ (λ (1 0)))");
 
-    close_pools();
+    lambdaspeed_close_pools();
 }
 
 #endif // BENCHMARKS
