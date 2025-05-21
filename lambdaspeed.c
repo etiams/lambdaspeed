@@ -2760,7 +2760,11 @@ go_of_lambda_term(
         go_of_lambda_term(graph, rator, &applicator.ports[0], lvl);
         go_of_lambda_term(graph, rand, &applicator.ports[2], lvl);
         connect_ports(&applicator.ports[1], output_port);
-        register_node_if_active(graph, applicator);
+
+        const struct node lambda = follow_port(&applicator.ports[0]);
+        if (is_beta(applicator, lambda)) {
+            focus_on(graph->betas, applicator); //
+        }
 
         break;
     }
@@ -2824,7 +2828,8 @@ go_of_lambda_term(
         invocation.ports[2] = u64_value_of_function(function);
         go_of_lambda_term(graph, rand, &invocation.ports[0], lvl);
         connect_ports(&invocation.ports[1], output_port);
-        register_node_if_active(graph, invocation);
+        register_node_if_active(
+            graph, invocation); // either commutation or invocation
 
         break;
     }
