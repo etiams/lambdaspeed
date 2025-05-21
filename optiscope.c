@@ -2048,9 +2048,9 @@ protrude_node(
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 annihilate(
-    struct node_graph *const restrict graph,
-    const struct node f,
-    const struct node g) {
+    // clang-format off
+    struct node_graph *const restrict graph, const struct node f, const struct node g) {
+    // clang-format on
     assert(graph);
     XASSERT(f.ports), XASSERT(g.ports);
     assert(is_annihilation(f, g));
@@ -2182,9 +2182,9 @@ COMPILER_UNUSED static const Rule commute_type_check = commute;
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 beta(
-    struct node_graph *const restrict graph,
-    const struct node f,
-    const struct node g) {
+    // clang-format off
+    struct node_graph *const restrict graph, const struct node f, const struct node g) {
+    // clang-format on
     assert(graph);
     XASSERT(!graph->is_reading_back);
     XASSERT(f.ports), XASSERT(g.ports);
@@ -2254,9 +2254,9 @@ invoke_function(const uint64_t function, const uint64_t value) {
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 invoke_rule(
-    struct node_graph *const restrict graph,
-    const struct node f,
-    const struct node g) {
+    // clang-format off
+    struct node_graph *const restrict graph, const struct node f, const struct node g) {
+    // clang-format on
     assert(graph);
     XASSERT(!graph->is_reading_back);
     XASSERT(f.ports), XASSERT(g.ports);
