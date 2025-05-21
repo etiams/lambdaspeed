@@ -1023,9 +1023,10 @@ unfocus(struct multifocus *const restrict focus) {
                : unvisit(&focus->fallback);
 }
 
-#define CONSUME_FOCUS(focus, f)                                                \
-    for (struct node f = (focus)->initial[0]; (focus)->count > 0;              \
-         f = unfocus(focus))
+#define CONSUME_MULTIFOCUS(focus, f)                                           \
+    for (struct node f = {NULL};                                               \
+         (focus)->count > 0 ? (f = unfocus(focus), true) : false;              \
+         (void)0)
 
 struct node_graph {
     const struct node root;
@@ -1894,7 +1895,7 @@ collect_garbage(
     const uint64_t altered_phase = graph->current_phase + 1;
 
     bool root_found = false;
-    CONSUME_FOCUS (stack, f) {
+    CONSUME_MULTIFOCUS (stack, f) {
         XASSERT(f.ports);
 
         if (SYMBOL_ROOT == f.ports[-1]) {
@@ -1923,12 +1924,12 @@ collect_garbage(
 
     if (root_found) {
         // Recover the current phase of the modified nodes.
-        CONSUME_FOCUS (history, f) {
+        CONSUME_MULTIFOCUS (history, f) {
             f.ports[0] = SET_PHASE(f.ports[0], graph->current_phase);
         }
     } else {
         // Free the nodes not reachable from the root.
-        CONSUME_FOCUS (history, f) {
+        CONSUME_MULTIFOCUS (history, f) {
             // Active nodes will be freed later before interacting.
             free_node_if_non_active(f);
         }
@@ -2319,7 +2320,7 @@ iterate_nodes(const struct node_graph *graph, const struct symbol_range range) {
 
     focus_on(stack, graph->root);
 
-    CONSUME_FOCUS (stack, node) {
+    CONSUME_MULTIFOCUS (stack, node) {
         XASSERT(node.ports);
 
         if (DECODE_PHASE_METADATA(node.ports[0]) == graph->current_phase) {
@@ -2887,16 +2888,16 @@ normalize_x_rules(struct node_graph *const restrict graph) {
     do {
         if (graph->is_reading_back) { goto auxiliary_rules; }
 
-        CONSUME_FOCUS (graph->betas, f) { interact(graph, beta, f); }
-        CONSUME_FOCUS (graph->invocations, f) {
+        CONSUME_MULTIFOCUS (graph->betas, f) { interact(graph, beta, f); }
+        CONSUME_MULTIFOCUS (graph->invocations, f) {
             interact(graph, invoke_rule, f);
         }
 
     auxiliary_rules:
-        CONSUME_FOCUS (graph->annihilations, f) {
+        CONSUME_MULTIFOCUS (graph->annihilations, f) {
             interact(graph, annihilate, f);
         }
-        CONSUME_FOCUS (graph->commutations, f) { //
+        CONSUME_MULTIFOCUS (graph->commutations, f) { //
             interact(graph, commute, f);
         }
     } while (!is_normalized_graph(graph));
