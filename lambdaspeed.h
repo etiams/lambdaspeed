@@ -69,11 +69,12 @@ are not compatible with `NDEBUG`!
 #error You are not eligible for Graphviz visualization.
 #endif
 
+#include <stdint.h>
 #include <stdio.h>
 
 typedef struct lambda_term *LambdaTerm;
 
-/// Construct a lambda term application from `rator` (opeRATOR) and `rand`
+/// Construct a lambda term application from `rator` (opeRATOR) & `rand`
 /// (opeRAND).
 extern LambdaTerm
 applicator(const restrict LambdaTerm rator, const restrict LambdaTerm rand);
@@ -88,12 +89,23 @@ link_lambda_body(
     const restrict LambdaTerm binder,
     const restrict LambdaTerm body);
 
-/// Construct a lambda abstraction from the binder name `x` and the `body`.
+/// Construct a lambda abstraction from the binder name `x` & the `body`.
 #define lambda(x, body) ((x) = prelambda(), link_lambda_body(x, body))
 
 /// Construct a lambda term variable from the corresponding binder.
 extern LambdaTerm
 var(const restrict LambdaTerm binder);
+
+/// Construct a lambda term cell holding the provided 64-bit `value`.
+extern LambdaTerm
+cell(const uint64_t value);
+
+/// Construct a lambda term function call from the provided function pointer &
+/// the lambda term operand.
+extern LambdaTerm
+invoke(
+    uint64_t (*const function)(uint64_t value),
+    const restrict LambdaTerm rand);
 
 /// Run the optimal reduction algorithm on the given `term`. The `term` object
 /// will be deallocated automatically.

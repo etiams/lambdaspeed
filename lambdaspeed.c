@@ -123,6 +123,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define COMPILER_FLATTEN            __attribute__((flatten))
 #define COMPILER_RETURNS_NONNULL    __attribute__((returns_nonnull))
 #define COMPILER_WARN_UNUSED_RESULT __attribute__((warn_unused_result))
+#define COMPILER_FALLTHROUGH        __attribute__((fallthrough))
 
 #ifndef __clang__
 
@@ -192,6 +193,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef COMPILER_WARN_UNUSED_RESULT
 #define COMPILER_WARN_UNUSED_RESULT COMPILER_IGNORE
+#endif
+
+#ifndef COMPILER_FALLTHROUGH
+#define COMPILER_FALLTHROUGH COMPILER_IGNORE
 #endif
 
 #ifndef COMPILER_MALLOC
@@ -342,10 +347,13 @@ STATIC_ASSERT(CHAR_BIT == 8, "The byte width must be 8 bits!");
 STATIC_ASSERT(
     sizeof(uint64_t *) == sizeof(uint64_t),
     "The machine word width must be 64 bits!");
+STATIC_ASSERT(
+    sizeof(uint64_t (*)(uint64_t value)) <= sizeof(uint64_t),
+    "Function handles must fit in `uint64_t`!");
 
 #define MIN_REGULAR_SYMBOL   UINT64_C(0)
-#define MAX_REGULAR_SYMBOL   UINT64_C(5)
-#define INDEX_RANGE          UINT64_C(9223372036854775805)
+#define MAX_REGULAR_SYMBOL   UINT64_C(7)
+#define INDEX_RANGE          UINT64_C(9223372036854775804)
 #define MAX_DUPLICATOR_INDEX (MAX_REGULAR_SYMBOL + INDEX_RANGE)
 #define MAX_DELIMITER_INDEX  (MAX_DUPLICATOR_INDEX + INDEX_RANGE)
 #define MAX_PORTS            UINT64_C(3)
@@ -366,6 +374,8 @@ STATIC_ASSERT(
 #define SYMBOL_LAMBDA        UINT64_C(3)
 #define SYMBOL_ERASER        UINT64_C(4)
 #define SYMBOL_S             UINT64_C(5)
+#define SYMBOL_CELL          UINT64_C(6)
+#define SYMBOL_INVOKE        UINT64_C(7)
 #define SYMBOL_DUPLICATOR(i) (MAX_REGULAR_SYMBOL + 1 + (i))
 #define SYMBOL_DELIMITER(i)  (MAX_DUPLICATOR_INDEX + 1 + (i))
 
@@ -408,6 +418,8 @@ ports_count(const uint64_t symbol) {
     case SYMBOL_LAMBDA: return 3;
     case SYMBOL_ERASER: return 1;
     case SYMBOL_S: return 2;
+    case SYMBOL_CELL: return 1;
+    case SYMBOL_INVOKE: return 2;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -469,7 +481,9 @@ symbol_index(const uint64_t symbol) {
     case SYMBOL_APPLICATOR:
     case SYMBOL_LAMBDA:
     case SYMBOL_ERASER:
-    case SYMBOL_S: return -1;
+    case SYMBOL_S:
+    case SYMBOL_CELL:
+    case SYMBOL_INVOKE: return -1;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -505,6 +519,8 @@ print_symbol(const uint64_t symbol) {
     case SYMBOL_LAMBDA: sprintf(buffer, "λ"); break;
     case SYMBOL_ERASER: sprintf(buffer, "◉"); break;
     case SYMBOL_S: sprintf(buffer, "S"); break;
+    case SYMBOL_CELL: sprintf(buffer, "cell"); break;
+    case SYMBOL_INVOKE: sprintf(buffer, "invoke"); break;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -537,7 +553,8 @@ bump_index(const uint64_t symbol) {
 // O(1) pool allocation & deallocation
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-COMPILER_MALLOC(free, 1) COMPILER_RETURNS_NONNULL COMPILER_WARN_UNUSED_RESULT //
+COMPILER_MALLOC(free, 1)
+COMPILER_RETURNS_NONNULL COMPILER_WARN_UNUSED_RESULT //
 static void *
 xmalloc(const size_t size) {
     XASSERT(size > 0);
@@ -548,7 +565,8 @@ xmalloc(const size_t size) {
     return object;
 }
 
-COMPILER_MALLOC(free, 1) COMPILER_RETURNS_NONNULL COMPILER_WARN_UNUSED_RESULT //
+COMPILER_MALLOC(free, 1)
+COMPILER_RETURNS_NONNULL COMPILER_WARN_UNUSED_RESULT //
 static void *
 xcalloc(const size_t n, const size_t size) {
     XASSERT(size > 0);
@@ -581,8 +599,8 @@ xcalloc(const size_t n, const size_t size) {
     static void prefix##_pool_close(                                           \
         struct prefix##_pool *const restrict self);                            \
                                                                                \
-    COMPILER_MALLOC(prefix##_pool_close, 1) COMPILER_RETURNS_NONNULL           \
-    COMPILER_WARN_UNUSED_RESULT COMPILER_COLD /* */                            \
+    COMPILER_MALLOC(prefix##_pool_close, 1)                                    \
+    COMPILER_RETURNS_NONNULL COMPILER_WARN_UNUSED_RESULT COMPILER_COLD /* */   \
     static struct prefix##_pool *prefix##_pool_create(void) {                  \
         struct prefix##_pool *const self = xmalloc(sizeof *self);              \
                                                                                \
@@ -644,8 +662,9 @@ xcalloc(const size_t n, const size_t size) {
     static void prefix##_pool_free(                                            \
         struct prefix##_pool *const restrict self, uint64_t *restrict object); \
                                                                                \
-    COMPILER_MALLOC(prefix##_pool_free, 1) COMPILER_RETURNS_NONNULL            \
-    COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) COMPILER_HOT /* */         \
+    COMPILER_MALLOC(prefix##_pool_free, 1)                                     \
+    COMPILER_RETURNS_NONNULL COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1)   \
+    COMPILER_HOT /* */                                                         \
     static uint64_t *prefix##_pool_alloc(                                      \
         struct prefix##_pool *const restrict self) {                           \
         assert(self);                                                          \
@@ -684,6 +703,8 @@ POOL_ALLOCATOR(eraser, sizeof(uint64_t) * 2)
 POOL_ALLOCATOR(scope, sizeof(uint64_t) * 3)
 POOL_ALLOCATOR(duplicator, sizeof(uint64_t) * 4)
 POOL_ALLOCATOR(delimiter, sizeof(uint64_t) * 3)
+POOL_ALLOCATOR(cell, sizeof(uint64_t) * 3)
+POOL_ALLOCATOR(invocation, sizeof(uint64_t) * 4)
 
 #define POOLS                                                                  \
     X(applicator_pool)                                                         \
@@ -691,7 +712,9 @@ POOL_ALLOCATOR(delimiter, sizeof(uint64_t) * 3)
     X(eraser_pool)                                                             \
     X(scope_pool)                                                              \
     X(duplicator_pool)                                                         \
-    X(delimiter_pool)
+    X(delimiter_pool)                                                          \
+    X(cell_pool)                                                               \
+    X(invocation_pool)
 
 // clang-format off
 
@@ -1006,12 +1029,12 @@ unfocus(struct multifocus *const restrict focus) {
 
 struct node_graph {
     const struct node root;
-    struct multifocus *annihilations, *commutations, *betas;
+    struct multifocus *annihilations, *commutations, *betas, *invocations;
     uint64_t current_phase;
     bool is_reading_back;
 
 #ifdef LAMBDASPEED_ENABLE_STATS
-    uint64_t nannihilations, ncommutations, nbetas;
+    uint64_t nannihilations, ncommutations, nbetas, ninvocations;
 #endif
 };
 
@@ -1022,7 +1045,8 @@ is_normalized_graph(const struct node_graph *const restrict graph) {
 
     return 0 == graph->betas->count &&         //
            0 == graph->annihilations->count && //
-           0 == graph->commutations->count;
+           0 == graph->commutations->count &&  //
+           0 == graph->invocations->count;
 }
 
 COMPILER_NONNULL(1) COMPILER_COLD //
@@ -1035,6 +1059,7 @@ free_graph(struct node_graph *const restrict graph) {
     XASSERT(graph->annihilations), XASSERT(0 == graph->annihilations->count);
     XASSERT(graph->commutations), XASSERT(0 == graph->commutations->count);
     XASSERT(graph->betas), XASSERT(0 == graph->betas->count);
+    XASSERT(graph->invocations), XASSERT(0 == graph->invocations->count);
     XASSERT(!graph->is_reading_back);
 
     free(DECODE_ADDRESS(graph->root.ports[0]) - 1 /* back to the symbol */);
@@ -1043,6 +1068,7 @@ free_graph(struct node_graph *const restrict graph) {
     free(graph->annihilations);
     free(graph->commutations);
     free(graph->betas);
+    free(graph->invocations);
 }
 
 COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) COMPILER_HOT //
@@ -1068,6 +1094,12 @@ alloc_node(struct node_graph *const restrict graph, const uint64_t symbol) {
     case SYMBOL_S:
         ports = scope_pool_alloc(scope_pool); //
         goto assign_port_1;
+    case SYMBOL_CELL:
+        ports = cell_pool_alloc(cell_pool); //
+        goto assign_port_0;
+    case SYMBOL_INVOKE:
+        ports = invocation_pool_alloc(invocation_pool);
+        goto assign_port_2;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -1144,6 +1176,8 @@ free_node(const struct node node) {
     case SYMBOL_LAMBDA: lambda_pool_free(lambda_pool, p); break;
     case SYMBOL_ERASER: eraser_pool_free(eraser_pool, p); break;
     case SYMBOL_S: scope_pool_free(scope_pool, p); break;
+    case SYMBOL_CELL: cell_pool_free(cell_pool, p); break;
+    case SYMBOL_INVOKE: invocation_pool_free(invocation_pool, p); break;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -1173,6 +1207,10 @@ register_active_pair(
         focus_on(graph->betas, f);
     } else if (g_symbol == SYMBOL_APPLICATOR && f_symbol == SYMBOL_LAMBDA) {
         focus_on(graph->betas, g);
+    } else if (f_symbol == SYMBOL_INVOKE && g_symbol == SYMBOL_CELL) {
+        focus_on(graph->invocations, f);
+    } else if (g_symbol == SYMBOL_INVOKE && f_symbol == SYMBOL_CELL) {
+        focus_on(graph->invocations, g);
     } else if (f_symbol == g_symbol) {
         focus_on(graph->annihilations, f);
     } else {
@@ -1367,6 +1405,7 @@ graphviz_edge_tailport(
         default: COMPILER_UNREACHABLE();
         }
     case SYMBOL_ERASER:
+    case SYMBOL_CELL:
         switch (i) {
         case 0: return "s";
         default: COMPILER_UNREACHABLE();
@@ -1389,6 +1428,7 @@ graphviz_edge_tailport(
         default: COMPILER_UNREACHABLE();
         }
     delimiter:
+    case SYMBOL_INVOKE:
         switch (i) {
         case 0: return "s";
         case 1: return "n";
@@ -1809,10 +1849,13 @@ graphviz(
 
 #if !defined(NDEBUG) && defined(LAMBDASPEED_ENABLE_STEP_BY_STEP)
 
+COMPILER_NONNULL(1) //
 static void
-wait_for_user(const struct node_graph graph) {
+wait_for_user(const struct node_graph *const restrict graph) {
+    assert(graph);
+
 #ifdef LAMBDASPEED_ENABLE_GRAPHVIZ
-    graphviz(&graph, "target/state.dot");
+    graphviz(graph, "target/state.dot");
     if (system("./command/graphviz-state.sh") != 0) {
         panic("Failed to run `./command/graphviz-state.sh`!");
     }
@@ -1866,11 +1909,11 @@ collect_garbage(
 
         switch (ports_count(f.ports[-1])) {
         case 3:
-            focus_on(stack, follow_port(&f.ports[2]));
-            // fall through
+            focus_on(stack, follow_port(&f.ports[2])); //
+            COMPILER_FALLTHROUGH;
         case 2:
-            focus_on(stack, follow_port(&f.ports[1]));
-            // fall through
+            focus_on(stack, follow_port(&f.ports[1])); //
+            COMPILER_FALLTHROUGH;
         case 1:
             focus_on(stack, follow_port(&f.ports[0])); //
             break;
@@ -1906,33 +1949,6 @@ typedef void (*Rule)
     (struct node_graph *const restrict graph, struct node f, struct node g);
 // clang-format on
 
-COMPILER_NONNULL(1, 2) COMPILER_HOT //
-static void
-interact(
-    struct node_graph *const restrict graph,
-    const Rule rule,
-    const struct node f) {
-    assert(graph);
-    assert(rule);
-    XASSERT(f.ports);
-
-    const struct node g = follow_port(&f.ports[0]);
-    XASSERT(g.ports);
-
-    if (DECODE_PHASE_METADATA(f.ports[0]) == graph->current_phase + 1) {
-        // This active node was previously marked as garbage.
-        goto cleanup;
-    }
-
-    assert(is_interaction(f, g));
-
-    rule(graph, f, g);
-
-cleanup:
-    free_node(f);
-    free_node(g);
-}
-
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT //
 inline static bool
 is_annihilation(const struct node f, const struct node g) {
@@ -1958,6 +1974,37 @@ is_commutation(const struct node f, const struct node g) {
     return is_interaction(f, g) && !is_beta(f, g) && !is_beta(g, f) &&
            f.ports[-1] != g.ports[-1];
 }
+
+#ifdef LAMBDASPEED_ENABLE_TRACING
+
+COMPILER_NONNULL(1, 2) //
+static void
+debug_interaction(
+    const char caller[const restrict],
+    const struct node_graph *const restrict graph,
+    const struct node f,
+    const struct node g) {
+    assert(caller);
+    assert(graph);
+
+    char f_ssymbol[MAX_SSYMBOL_SIZE] = {0}, g_ssymbol[MAX_SSYMBOL_SIZE] = {0};
+    strcpy(f_ssymbol, print_symbol(f.ports[-1])),
+        strcpy(g_ssymbol, print_symbol(g.ports[-1]));
+    debug(
+        "%s(%p %s, %p %s)",
+        caller,
+        (void *)f.ports,
+        f_ssymbol,
+        (void *)g.ports,
+        g_ssymbol);
+    wait_for_user(graph);
+}
+
+#else
+
+#define debug_interaction(caller, graph, f, g) ((void)0)
+
+#endif // LAMBDASPEED_ENABLE_TRACING
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
@@ -2004,43 +2051,27 @@ annihilate(
     struct node_graph *const restrict graph,
     const struct node f,
     const struct node g) {
-#ifdef LAMBDASPEED_ENABLE_TRACING
-    {
-        const char *const ssymbol = print_symbol(f.ports[-1]);
-        debug(
-            "%s(%p %s, %p %s)",
-            __func__,
-            (void *)f.ports,
-            ssymbol,
-            (void *)g.ports,
-            ssymbol);
-    }
-#endif
-
     assert(graph);
     XASSERT(f.ports), XASSERT(g.ports);
     assert(is_annihilation(f, g));
-    wait_for_user(*graph);
 
-    const uint64_t n = ports_count(f.ports[-1]) - 1;
-
-    // clang-format off
-    switch (n) {
-    case 2: rewire_vertically(graph, f, g, 2);
-            // fall through
-    case 1: rewire_vertically(graph, f, g, 1);
-            // fall through
-    case 0: break;
-    default: COMPILER_UNREACHABLE();
-    }
-    // clang-format on
+    debug_interaction(__func__, graph, f, g);
 
 #ifdef LAMBDASPEED_ENABLE_STATS
     graph->nannihilations++;
 #endif
 
-    // There are no new nodes to draw a Graphviz cluster.
-    (void)0;
+    // clang-format off
+    const uint64_t n = ports_count(f.ports[-1]) - 1;
+    switch (n) {
+#define X(i) \
+    case (i): rewire_vertically(graph, f, g, (i)); COMPILER_FALLTHROUGH
+        X(2); X(1);
+#undef X
+    case 0: break;
+    default: COMPILER_UNREACHABLE();
+    }
+    // clang-format on
 }
 
 COMPILER_UNUSED static const Rule annihilate_type_check = annihilate;
@@ -2083,23 +2114,11 @@ prologue:;
         goto prologue;
     }
 
-#ifdef LAMBDASPEED_ENABLE_TRACING
-    {
-        char f_ssymbol[MAX_SSYMBOL_SIZE] = {0},
-             g_ssymbol[MAX_SSYMBOL_SIZE] = {0};
-        strcpy(f_ssymbol, print_symbol(f.ports[-1])),
-            strcpy(g_ssymbol, print_symbol(g.ports[-1]));
-        debug(
-            "%s(%p %s, %p %s)",
-            __func__,
-            (void *)f.ports,
-            f_ssymbol,
-            (void *)g.ports,
-            g_ssymbol);
-    }
-#endif
+    debug_interaction(__func__, graph, f, g);
 
-    wait_for_user(*graph);
+#ifdef LAMBDASPEED_ENABLE_STATS
+    graph->ncommutations++;
+#endif
 
     const bool update_symbol = (SYMBOL_LAMBDA == g.ports[-1] && i >= 0) ||
                                (IS_DELIMITER(g.ports[-1]) && i >= j);
@@ -2121,7 +2140,7 @@ prologue:;
     case 2:
         f_updates[1] = alloc_node(graph, f_symbol);
         protrude_node(graph, f_updates[1], g.ports[1]);
-        // fall through
+        COMPILER_FALLTHROUGH;
     case 1:
         f_updates[0] = alloc_node(graph, f_symbol);
         protrude_node(graph, f_updates[0], g.ports[m]);
@@ -2134,7 +2153,7 @@ prologue:;
     case 2:
         g_updates[1] = alloc_node(graph, g_symbol);
         protrude_node(graph, g_updates[1], f.ports[2]);
-        // fall through
+        COMPILER_FALLTHROUGH;
     case 1:
         g_updates[0] = alloc_node(graph, g_symbol);
         protrude_node(graph, g_updates[0], f.ports[1]);
@@ -2153,10 +2172,6 @@ prologue:;
         }
     }
 
-#ifdef LAMBDASPEED_ENABLE_STATS
-    graph->ncommutations++;
-#endif
-
     graphviz_commute_cluster(f_updates, g_updates, m, n);
 }
 
@@ -2168,18 +2183,21 @@ beta(
     struct node_graph *const restrict graph,
     const struct node f,
     const struct node g) {
-    debug("%s(%p @, %p λ)", __func__, (void *)f.ports, (void *)g.ports);
-    wait_for_user(*graph);
-
     assert(graph);
     XASSERT(!graph->is_reading_back);
     XASSERT(f.ports), XASSERT(g.ports);
     assert(is_interaction(f, g));
-    XASSERT(SYMBOL_APPLICATOR == f.ports[-1]);
-    XASSERT(SYMBOL_LAMBDA == g.ports[-1]);
+    XASSERT(SYMBOL_APPLICATOR == f.ports[-1]),
+        XASSERT(SYMBOL_LAMBDA == g.ports[-1]);
 
-    struct node lhs = alloc_node(graph, SYMBOL_DELIMITER(UINT64_C(0)));
-    struct node rhs = alloc_node(graph, SYMBOL_DELIMITER(UINT64_C(0)));
+    debug_interaction(__func__, graph, f, g);
+
+#ifdef LAMBDASPEED_ENABLE_STATS
+    graph->nbetas++;
+#endif
+
+    const struct node lhs = alloc_node(graph, SYMBOL_DELIMITER(UINT64_C(0)));
+    const struct node rhs = alloc_node(graph, SYMBOL_DELIMITER(UINT64_C(0)));
 
     // clang-format off
     uint64_t *const targets[] = {
@@ -2204,16 +2222,81 @@ beta(
         collect_garbage(graph, binder);
     }
 
-#ifdef LAMBDASPEED_ENABLE_STATS
-    graph->nbetas++;
-#endif
-
     if (!is_garbage_node(&binder.ports[0])) {
         graphviz_beta_cluster(&lhs.ports[0], &rhs.ports[0]);
     }
 }
 
 COMPILER_UNUSED static const Rule beta_type_check = beta;
+
+// See `u64_value_of_function`.
+COMPILER_CONST COMPILER_HOT //
+inline static uint64_t (*function_of_u64_value(const uint64_t function))(
+    uint64_t value) {
+    XASSERT(0 != function);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+    return (uint64_t (*)(uint64_t value))(void *)function;
+#pragma GCC diagnostic pop
+}
+
+COMPILER_HOT //
+inline static uint64_t
+invoke_function(const uint64_t function, const uint64_t value) {
+    XASSERT(0 != function);
+
+    return (function_of_u64_value(function))(value);
+}
+
+COMPILER_NONNULL(1) COMPILER_HOT //
+static void
+invoke_rule(
+    struct node_graph *const restrict graph,
+    const struct node f,
+    const struct node g) {
+    assert(graph);
+    XASSERT(!graph->is_reading_back);
+    XASSERT(f.ports), XASSERT(g.ports);
+    assert(is_interaction(f, g));
+    XASSERT(SYMBOL_INVOKE == f.ports[-1]), XASSERT(SYMBOL_CELL == g.ports[-1]);
+
+    debug_interaction(__func__, graph, f, g);
+
+#ifdef LAMBDASPEED_ENABLE_STATS
+    graph->ninvocations++;
+#endif
+
+    const struct node cell = alloc_node(graph, SYMBOL_CELL);
+    connect_ports(&cell.ports[0], DECODE_ADDRESS(f.ports[1]));
+    cell.ports[1] = invoke_function(f.ports[2], g.ports[1]);
+}
+
+COMPILER_UNUSED static const Rule invoke_type_check = invoke_rule;
+
+COMPILER_NONNULL(1, 2) COMPILER_HOT //
+static void
+interact(
+    struct node_graph *const restrict graph,
+    const Rule rule,
+    const struct node f) {
+    assert(graph);
+    assert(rule);
+    XASSERT(f.ports);
+
+    const struct node g = follow_port(&f.ports[0]);
+    XASSERT(g.ports);
+
+    if (DECODE_PHASE_METADATA(f.ports[0]) == graph->current_phase + 1) {
+        // This active node was previously marked as garbage.
+        goto cleanup;
+    }
+
+    rule(graph, f, g);
+
+cleanup:
+    free_node(f), free_node(g);
+}
 
 // The read-back phases
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -2249,10 +2332,10 @@ iterate_nodes(const struct node_graph *graph, const struct symbol_range range) {
         switch (ports_count(node.ports[-1])) {
         case 3:
             focus_on(stack, follow_port(&node.ports[2]));
-            // fall through
+            COMPILER_FALLTHROUGH;
         case 2:
             focus_on(stack, follow_port(&node.ports[1]));
-            // fall through
+            COMPILER_FALLTHROUGH;
         case 1:
             focus_on(stack, follow_port(&node.ports[0])); //
             break;
@@ -2268,7 +2351,7 @@ iterate_nodes(const struct node_graph *graph, const struct symbol_range range) {
 #define PROCESS_NODE_IN_PHASE(graph, node)                                     \
     do {                                                                       \
         debug("%s(%s)", __func__, print_node(node));                           \
-        wait_for_user(*graph);                                                 \
+        wait_for_user(graph);                                                  \
     } while (false)
 
 COMPILER_NONNULL(1) //
@@ -2397,6 +2480,14 @@ to_lambda_string(
     case SYMBOL_S:
         to_lambda_string(stream, i + 1, follow_port(&node.ports[1]));
         return;
+    case SYMBOL_CELL:
+        fprintf(stream, "cell[%" PRIu64 "]", node.ports[1]);
+        return;
+    case SYMBOL_INVOKE:
+        fprintf(stream, "(invoke[%#llx] ", (unsigned long long)node.ports[1]);
+        to_lambda_string(stream, i, follow_port(&node.ports[0]));
+        fprintf(stream, ")");
+        return;
     default: break;
     }
 
@@ -2424,6 +2515,8 @@ enum lambda_term_type {
     LAMBDA_TERM_APPLICATOR,
     LAMBDA_TERM_LAMBDA,
     LAMBDA_TERM_VAR,
+    LAMBDA_TERM_CELL,
+    LAMBDA_TERM_INVOKE,
 };
 
 struct applicator_payload {
@@ -2438,10 +2531,17 @@ struct lambda_payload {
     uint64_t lvl;         // the de Bruijn level; dynamically assigned
 };
 
+struct invoke_payload {
+    uint64_t (*function)(uint64_t value);
+    struct lambda_term *rand;
+};
+
 union lambda_term_payload {
     struct applicator_payload applicator;
     struct lambda_payload lambda;
     struct lambda_payload *var; // the pointer to the binding lambda
+    uint64_t cell;
+    struct invoke_payload invoke;
 };
 
 struct lambda_term {
@@ -2495,6 +2595,29 @@ var(const restrict LambdaTerm binder) {
     return term;
 }
 
+extern LambdaTerm
+cell(const uint64_t value) {
+    struct lambda_term *const term = xmalloc(sizeof *term);
+    term->ty = LAMBDA_TERM_CELL;
+    term->payload.cell = value;
+
+    return term;
+}
+
+extern LambdaTerm
+invoke(
+    uint64_t (*const function)(uint64_t value),
+    const restrict LambdaTerm rand) {
+    assert(function), assert(rand);
+
+    struct lambda_term *const term = xmalloc(sizeof *term);
+    term->ty = LAMBDA_TERM_INVOKE;
+    term->payload.invoke.function = function;
+    term->payload.invoke.rand = rand;
+
+    return term;
+}
+
 // Conversion from a lambda term
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -2527,6 +2650,13 @@ count_binder_usage(
         XASSERT(this_lambda);
 
         return lambda == this_lambda;
+    }
+    case LAMBDA_TERM_CELL: return 0;
+    case LAMBDA_TERM_INVOKE: {
+        struct lambda_term *const rand = term->payload.invoke.rand;
+        XASSERT(rand);
+
+        return count_binder_usage(rand, lambda);
     }
     default: COMPILER_UNREACHABLE();
     }
@@ -2593,6 +2723,21 @@ de_bruijn_level_to_index(const uint64_t lvl, const uint64_t var) {
     return lvl - var - 1;
 }
 
+// Casting a function pointer to `void *` is not safe by the standard, but many
+// implementationnes permit it because of dynamic loading (e.g., `dlopen`).
+// Here, we perform a two-step conversion: we first cast the user-provided
+// pointer to `void *` & then to `uint64_t`.
+COMPILER_CONST COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) //
+inline static uint64_t
+u64_value_of_function(uint64_t (*const function)(uint64_t value)) {
+    assert(function);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+    return (uint64_t)(void *)function;
+#pragma GCC diagnostic pop
+}
+
 COMPILER_NONNULL(1, 2, 3) //
 static void
 go_of_lambda_term(
@@ -2615,7 +2760,7 @@ go_of_lambda_term(
         go_of_lambda_term(graph, rator, &applicator.ports[0], lvl);
         go_of_lambda_term(graph, rand, &applicator.ports[2], lvl);
         connect_ports(&applicator.ports[1], output_port);
-        if (is_active(applicator)) { focus_on(graph->betas, applicator); }
+        register_node_if_active(graph, applicator);
 
         break;
     }
@@ -2659,6 +2804,30 @@ go_of_lambda_term(
 
         break;
     }
+    case LAMBDA_TERM_CELL: {
+        const uint64_t value = term->payload.cell;
+
+        const struct node cell = alloc_node(graph, SYMBOL_CELL);
+        cell.ports[1] = value;
+        connect_ports(&cell.ports[0], output_port);
+
+        break;
+    }
+    case LAMBDA_TERM_INVOKE: {
+        uint64_t (*const function)(uint64_t value) =
+            term->payload.invoke.function;
+        struct lambda_term *const rand = term->payload.invoke.rand;
+        XASSERT(function);
+        XASSERT(rand);
+
+        const struct node invocation = alloc_node(graph, SYMBOL_INVOKE);
+        invocation.ports[2] = u64_value_of_function(function);
+        go_of_lambda_term(graph, rand, &invocation.ports[0], lvl);
+        connect_ports(&invocation.ports[1], output_port);
+        register_node_if_active(graph, invocation);
+
+        break;
+    }
     default: COMPILER_UNREACHABLE();
     }
 
@@ -2682,7 +2851,8 @@ of_lambda_term(struct lambda_term *const restrict term) {
         .root = root,
         .annihilations = xcalloc(1, sizeof *graph.annihilations),
         .commutations = xcalloc(1, sizeof *graph.commutations),
-        .betas = xcalloc(1, sizeof *graph.commutations),
+        .betas = xcalloc(1, sizeof *graph.betas),
+        .invocations = xcalloc(1, sizeof *graph.invocations),
         .current_phase = PHASE_INITIAL,
         .is_reading_back = false,
 
@@ -2690,6 +2860,7 @@ of_lambda_term(struct lambda_term *const restrict term) {
         .nannihilations = 0,
         .ncommutations = 0,
         .nbetas = 0,
+        .ninvocations = 0,
 #endif
     };
 
@@ -2709,13 +2880,20 @@ normalize_x_rules(struct node_graph *const restrict graph) {
     assert(graph);
 
     do {
-        if (!graph->is_reading_back) {
-            CONSUME_FOCUS (graph->betas, f) { interact(graph, beta, f); }
+        if (graph->is_reading_back) { goto auxiliary_rules; }
+
+        CONSUME_FOCUS (graph->betas, f) { interact(graph, beta, f); }
+        CONSUME_FOCUS (graph->invocations, f) {
+            interact(graph, invoke_rule, f);
         }
-        // clang-format off
-        CONSUME_FOCUS (graph->annihilations, f) { interact(graph, annihilate, f); }
-        // clang-format on
-        CONSUME_FOCUS (graph->commutations, f) { interact(graph, commute, f); }
+
+    auxiliary_rules:
+        CONSUME_FOCUS (graph->annihilations, f) {
+            interact(graph, annihilate, f);
+        }
+        CONSUME_FOCUS (graph->commutations, f) { //
+            interact(graph, commute, f);
+        }
     } while (!is_normalized_graph(graph));
 }
 
@@ -2741,9 +2919,11 @@ lambdaspeed_algorithm(
     printf("Annihilation interactions: %" PRIu64 "\n", graph.nannihilations);
     printf("Commutation interactions: %" PRIu64 "\n", graph.ncommutations);
     printf("Beta interactions: %" PRIu64 "\n", graph.nbetas);
+    printf("Native function calls: %" PRIu64 "\n", graph.ninvocations);
     printf(
         "Total interactions: %" PRIu64 "\n",
-        graph.nannihilations + graph.ncommutations + graph.nbetas);
+        graph.nannihilations + graph.ncommutations + graph.nbetas +
+            graph.ninvocations);
 #endif
 
     if (NULL == stream) { goto cleanup; }
