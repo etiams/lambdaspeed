@@ -2364,22 +2364,19 @@ unwind(struct node_graph *const restrict graph) {
 
     graph->current_phase = PHASE_UNWIND;
 
-    struct node_list *applicators =
-        iterate_nodes(graph, SYMBOL_RANGE_1(SYMBOL_APPLICATOR));
-
-    ITERATE_LIST (iter, applicators) {
-        const struct node node = iter->node;
-        XASSERT(node.ports);
-        PROCESS_NODE_IN_PHASE(graph, node);
+    CONSUME_LIST (
+        iter, iterate_nodes(graph, SYMBOL_RANGE_1(SYMBOL_APPLICATOR))) {
+        const struct node f = iter->node;
+        XASSERT(f.ports);
+        PROCESS_NODE_IN_PHASE(graph, f);
 
         // clang-format off
-        CONNECT_NODE(node,
-            DECODE_ADDRESS(node.ports[1]), DECODE_ADDRESS(node.ports[2]), DECODE_ADDRESS(node.ports[0]));
+        CONNECT_NODE(f,
+            DECODE_ADDRESS(f.ports[1]), DECODE_ADDRESS(f.ports[2]),
+            DECODE_ADDRESS(f.ports[0]));
         // clang-format on
-    }
 
-    CONSUME_LIST (iter, applicators) {
-        register_node_if_active(graph, iter->node);
+        register_node_if_active(graph, f);
     }
 }
 
@@ -2417,10 +2414,11 @@ scope_remove(struct node_graph *const restrict graph) {
 
         const struct node scope = alloc_node(graph, SYMBOL_S);
         // clang-format off
-        CONNECT_NODE(scope, DECODE_ADDRESS(node.ports[1]), DECODE_ADDRESS(node.ports[0]));
+        CONNECT_NODE(scope,
+            DECODE_ADDRESS(node.ports[1]), DECODE_ADDRESS(node.ports[0]));
         // clang-format on
-        new_scopes = visit(new_scopes, scope);
 
+        new_scopes = visit(new_scopes, scope);
         free_node(node);
     }
 
