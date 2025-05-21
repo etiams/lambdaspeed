@@ -312,7 +312,7 @@ church_five(void) {
                         applicator(var(f), applicator(var(f), var(x))))))));
 }
 
-// The original showcase test from the Lambdascope paper.
+// The originall showcase test from the Lambdascope paper.
 static struct lambda_term *
 church_two_two_test(void) {
     return applicator(church_two(), church_two());

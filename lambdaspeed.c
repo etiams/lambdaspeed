@@ -29,7 +29,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-// Options:
+// Optionnes:
 // `NDEBUG` -- disable a plentitude of assertionnes & enable some compiler
 // builtins for micro-optimization.
 // `LAMBDASPEED_ENABLE_TRACING` -- enable detailed log tracing of the algorithm.
@@ -42,7 +42,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // `LAMBDASPEED_ENABLE_GRAPHVIZ_CLUSTERS` -- generate blue rectangular
 // containers for Beta & commutation interactionnes.
 // `LAMBDASPEED_MULTIFOCUS_COUNT` -- the initial number of nodes for the
-// contiguous segment of multifocuses.
+// contiguous segment of multifocuses. 1 MB default.
 
 // Option consistency checks
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -1933,7 +1933,7 @@ collect_garbage(
         }
     }
 
-    // Free all the alocated cells of the fallback list.
+    // Free all the allocated cells of the fallback list.
     CONSUME_LIST (iter, stack->fallback) {}
 
     free(stack);
