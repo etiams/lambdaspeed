@@ -712,9 +712,9 @@ xcalloc(const size_t n, const size_t size) {
         assert(object);                                                        \
                                                                                \
         object--; /* back to the symbol address */                             \
-        *object = SYMBOL_GARBAGE;                                              \
         union prefix##_chunk *const freed = (union prefix##_chunk *)object;    \
         CLEAR_MEMORY(freed);                                                   \
+        *object = SYMBOL_GARBAGE;                                              \
         freed->next = self->next_free_chunk;                                   \
         self->next_free_chunk = freed;                                         \
         COMPILER_POISON_MEMORY(freed, chunk_size);                             \
