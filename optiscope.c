@@ -2878,6 +2878,10 @@ of_lambda_term(struct lambda_term *const restrict term) {
 // The complete algorithm
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
+#ifndef OPTISCOPE_MAX_COMMUTATIONS
+#define OPTISCOPE_MAX_COMMUTATIONS 100000
+#endif
+
 COMPILER_NONNULL(1) //
 static void
 normalize_x_rules(struct node_graph *const restrict graph) {
@@ -2889,6 +2893,7 @@ normalize_x_rules(struct node_graph *const restrict graph) {
         if (graph->is_reading_back) { goto auxiliary_rules; }
 
         CONSUME_MULTIFOCUS (graph->betas, f) { interact(graph, beta, f); }
+
         CONSUME_MULTIFOCUS (graph->invocations, f) {
             interact(graph, invoke_rule, f);
         }
@@ -2897,8 +2902,12 @@ normalize_x_rules(struct node_graph *const restrict graph) {
         CONSUME_MULTIFOCUS (graph->annihilations, f) {
             interact(graph, annihilate, f);
         }
-        CONSUME_MULTIFOCUS (graph->commutations, f) { //
+
+        uint64_t fuel = OPTISCOPE_MAX_COMMUTATIONS;
+        CONSUME_MULTIFOCUS (graph->commutations, f) {
             interact(graph, commute, f);
+            fuel--;
+            if (0 == fuel) { break; }
         }
     } while (!is_normalized_graph(graph));
 }

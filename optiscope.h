@@ -53,6 +53,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // - `OPTISCOPE_MULTIFOCUS_COUNT`
 //   The initial number of nodes for the contiguous segment of multifocuses.
 //   Defaulting to 1 MB.
+// - `OPTISCOPE_MAX_COMMUTATIONS`
+//   The maximum number of commutationnes performed in sequence.
+//   Fine-tuning this parameter can greatly speed up computation in case of
+//   infinite reduction paths, as Beta reductionnes become more prioritized over
+//   some useless interactionnes.
+//   Defaulting to 100'000.
 
 #if (                                                                          \
     defined(OPTISCOPE_ENABLE_GRAPHVIZ) ||                                      \
