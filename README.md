@@ -439,7 +439,7 @@ Both packages require very outdated dependencies, & I am not a person quite fami
  - `./command/graphviz-state.sh` -- visualize `target/state.dot` as `target/state.dot.svg`.
  - `./command/graphvis-all.sh` -- visualize all the `.dot` files in `target/`.
 
-## Visualizationne
+## Visualization
 
 Running `./command/test.sh` as it is will onely check the input-output behaviour of the machine. For `.dot` files to appear in the `target/` directory, you will need to `mkdir target`, uncomment `#define LAMBDASPEED_ENABLE_GRAPHVIZ`, & onely call the test case you are interested in. (The image from the introduction was obtained from `iota_combinator_test`.)
 
