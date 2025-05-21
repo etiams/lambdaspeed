@@ -22,7 +22,7 @@ church_thousand(void) {
 
 int
 main(void) {
-    open_pools();
-    algorithm(NULL, applicator(church_thousand(), church_two()));
-    close_pools();
+    lambdaspeed_open_pools();
+    lambdaspeed_algorithm(NULL, applicator(church_thousand(), church_two()));
+    lambdaspeed_close_pools();
 }

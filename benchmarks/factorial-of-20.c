@@ -16,7 +16,7 @@ church_twenty(void) {
 
 int
 main(void) {
-    open_pools();
-    algorithm(NULL, applicator(factorial_term(), church_twenty()));
-    close_pools();
+    lambdaspeed_open_pools();
+    lambdaspeed_algorithm(NULL, applicator(factorial_term(), church_twenty()));
+    lambdaspeed_close_pools();
 }

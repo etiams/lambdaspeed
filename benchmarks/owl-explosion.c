@@ -2,6 +2,8 @@
 
 #include "../tests.c"
 
+#include <stdint.h>
+
 static struct lambda_term *
 owl_combinator(void) {
     struct lambda_term *a, *b;
@@ -24,9 +26,9 @@ owl_explosion(const uint64_t depth) {
 
 int
 main(void) {
-    open_pools();
+    lambdaspeed_open_pools();
     struct lambda_term *term =
         applicator(owl_explosion(1000), owl_combinator());
-    algorithm(NULL, term);
-    close_pools();
+    lambdaspeed_algorithm(NULL, term);
+    lambdaspeed_close_pools();
 }

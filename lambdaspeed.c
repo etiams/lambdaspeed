@@ -34,8 +34,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "lambdaspeed.h"
 
-#define _DEFAULT_SOURCE
-#define _POSIX_SOURCE // in case we use glibc
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE // in case we use glibc
+#endif
 
 #include <assert.h>
 #include <inttypes.h>
