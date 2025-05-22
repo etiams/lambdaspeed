@@ -108,16 +108,24 @@ link_lambda_body(
 extern LambdaTerm
 var(const restrict LambdaTerm binder);
 
-/// Construct a lambda term cell holding the provided 64-bit `value`.
+/// Construct a data cell holding the provided 64-bit `value`.
 extern LambdaTerm
 cell(const uint64_t value);
 
-/// Construct a lambda term function call from the provided function pointer &
-/// the lambda term operand.
+/// Construct a unary function call from the provided function pointer & the
+/// lambda term operand.
 extern LambdaTerm
-invoke(
-    uint64_t (*const function)(uint64_t value),
+unary_call(
+    uint64_t (*const function)(uint64_t),
     const restrict LambdaTerm rand);
+
+/// Construct a binary function call from the provided function pointer & the
+/// left and right operands.
+extern LambdaTerm
+binary_call(
+    uint64_t (*const function)(uint64_t, uint64_t),
+    const restrict LambdaTerm lhs,
+    const restrict LambdaTerm rhs);
 
 /// Run the optimal reduction algorithm on the given `term`. The `term` object
 /// will be deallocated automatically.

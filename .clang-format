@@ -44,4 +44,5 @@ ForEachMacros: [
     CONSUME_LIST,
     CONSUME_MULTIFOCUS,
   ]
+IfMacros: [MATCH]
 StatementMacros: [PRINTER]

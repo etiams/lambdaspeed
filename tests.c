@@ -720,6 +720,61 @@ why_factorial_test(void) {
     return applicator(why_factorial_term(), church_three());
 }
 
+// Unary arithmetic
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+// clang-format off
+static uint64_t square(const uint64_t x) { return x * x; }
+
+static uint64_t cube(const uint64_t x) { return x * x * x; }
+
+static uint64_t halve(const uint64_t x) { return x / 2; }
+// clang-format on
+
+static struct lambda_term *
+unary_arithmetic(void) {
+    struct lambda_term *f, *x;
+
+    return unary_call(
+        halve,
+        applicator(
+            lambda(f, applicator(var(f), cell(4))),
+            lambda(x, unary_call(cube, unary_call(square, var(x))))));
+}
+
+// Binary arithmetic
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+// clang-format off
+static uint64_t add(const uint64_t x, const uint64_t y)
+    { return x + y; }
+
+static uint64_t multiply(const uint64_t x, const uint64_t y)
+    { return x * y; }
+
+static uint64_t subtract(const uint64_t x, const uint64_t y)
+    { return x - y; }
+
+static uint64_t divide(const uint64_t x, const uint64_t y)
+    { return x / y; }
+// clang-format on
+
+static struct lambda_term *
+binary_arithmetic(void) {
+    struct lambda_term *f, *x;
+
+    return applicator(
+        lambda(
+            f,
+            binary_call(
+                divide,
+                binary_call(subtract, applicator(var(f), cell(10)), cell(8)),
+                cell(2))),
+        lambda(
+            x,
+            binary_call(multiply, binary_call(add, var(x), cell(5)), cell(2))));
+}
+
 // Examples from the literature
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -839,6 +894,8 @@ main(void) {
     TEST_CASE(y_factorial_test, "(λ (λ (1 (1 (1 (1 (1 (1 0))))))))");
     TEST_CASE(y_fibonacci_test, "(λ (λ (1 (1 0))))");
     TEST_CASE(why_factorial_test, "(λ (λ (1 (1 (1 (1 (1 (1 0))))))))");
+    TEST_CASE(unary_arithmetic, "cell[2048]");
+    TEST_CASE(binary_arithmetic, "cell[11]");
     TEST_CASE(lamping_example, "(λ 0)");
     TEST_CASE(lamping_example_2, "(λ 0)");
     TEST_CASE(asperti_guerrini_example, "(λ (0 0))");

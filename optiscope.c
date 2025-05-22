@@ -339,9 +339,10 @@ PRINTER(panic, stderr, abort())
     ((uint64_t *)(SIGN_EXTEND((address) & ADDRESS_MASK)))
 #define DECODE_ADDRESS_METADATA(address) (((address) & ~ADDRESS_MASK))
 
-#define SET_PHASE(address, phase)                                              \
-    (((address) & 0xCFFFFFFFFFFFFFFF) |                                        \
-     ENCODE_METADATA(UINT64_C(0) /* the principal port */, (phase)))
+#define PORT_VALUE(offset, phase, address)                                     \
+    ENCODE_ADDRESS(ENCODE_METADATA((offset), (phase)), (address))
+
+#define IS_PRINCIPAL_PORT(port) (0 == DECODE_OFFSET_METADATA(port))
 
 STATIC_ASSERT(CHAR_BIT == 8, "The byte width must be 8 bits!");
 STATIC_ASSERT(
@@ -351,9 +352,19 @@ STATIC_ASSERT(
     sizeof(uint64_t (*)(uint64_t value)) <= sizeof(uint64_t),
     "Function handles must fit in `uint64_t`!");
 
+COMPILER_NONNULL(1) COMPILER_HOT //
+inline static void
+set_phase(uint64_t *const restrict port, const uint64_t phase) {
+    assert(port);
+    XASSERT(IS_PRINCIPAL_PORT(*port));
+
+    *port = (*port & 0xCFFFFFFFFFFFFFFF /* clear the phase bits (61-60) */) |
+            (phase << EFFECTIVE_ADDRESS_BITS);
+}
+
 #define MIN_REGULAR_SYMBOL   UINT64_C(0)
-#define MAX_REGULAR_SYMBOL   UINT64_C(7)
-#define INDEX_RANGE          UINT64_C(9223372036854775804)
+#define MAX_REGULAR_SYMBOL   UINT64_C(9)
+#define INDEX_RANGE          UINT64_C(9223372036854775803)
 #define MAX_DUPLICATOR_INDEX (MAX_REGULAR_SYMBOL + INDEX_RANGE)
 #define MAX_DELIMITER_INDEX  (MAX_DUPLICATOR_INDEX + INDEX_RANGE)
 #define MAX_PORTS            UINT64_C(3)
@@ -366,18 +377,18 @@ STATIC_ASSERT(
     UINT64_MAX == MAX_DELIMITER_INDEX,
     "Every bit of a symbol must be used!");
 
-#define IS_PRINCIPAL_PORT(port) (0 == DECODE_OFFSET_METADATA(port))
-
-#define SYMBOL_ROOT          UINT64_C(0)
-#define SYMBOL_GARBAGE       UINT64_C(1)
-#define SYMBOL_APPLICATOR    UINT64_C(2)
-#define SYMBOL_LAMBDA        UINT64_C(3)
-#define SYMBOL_ERASER        UINT64_C(4)
-#define SYMBOL_S             UINT64_C(5)
-#define SYMBOL_CELL          UINT64_C(6)
-#define SYMBOL_INVOKE        UINT64_C(7)
-#define SYMBOL_DUPLICATOR(i) (MAX_REGULAR_SYMBOL + 1 + (i))
-#define SYMBOL_DELIMITER(i)  (MAX_DUPLICATOR_INDEX + 1 + (i))
+#define SYMBOL_ROOT            UINT64_C(0)
+#define SYMBOL_GARBAGE         UINT64_C(1)
+#define SYMBOL_APPLICATOR      UINT64_C(2)
+#define SYMBOL_LAMBDA          UINT64_C(3)
+#define SYMBOL_ERASER          UINT64_C(4)
+#define SYMBOL_S               UINT64_C(5)
+#define SYMBOL_CELL            UINT64_C(6)
+#define SYMBOL_UNARY_CALL      UINT64_C(7)
+#define SYMBOL_BINARY_CALL     UINT64_C(8)
+#define SYMBOL_BINARY_CALL_AUX UINT64_C(9)
+#define SYMBOL_DUPLICATOR(i)   (MAX_REGULAR_SYMBOL + 1 + (i))
+#define SYMBOL_DELIMITER(i)    (MAX_DUPLICATOR_INDEX + 1 + (i))
 
 // clang-format off
 #define IS_DUPLICATOR(symbol) \
@@ -413,13 +424,15 @@ COMPILER_CONST COMPILER_WARN_UNUSED_RESULT COMPILER_HOT //
 static uint8_t
 ports_count(const uint64_t symbol) {
     switch (symbol) {
-    case SYMBOL_ROOT: return 2;
+    case SYMBOL_ROOT:
+    case SYMBOL_S:
+    case SYMBOL_UNARY_CALL:
+    case SYMBOL_BINARY_CALL_AUX: return 2;
     case SYMBOL_APPLICATOR:
-    case SYMBOL_LAMBDA: return 3;
-    case SYMBOL_ERASER: return 1;
-    case SYMBOL_S: return 2;
+    case SYMBOL_LAMBDA:
+    case SYMBOL_BINARY_CALL: return 3;
+    case SYMBOL_ERASER:
     case SYMBOL_CELL: return 1;
-    case SYMBOL_INVOKE: return 2;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -483,7 +496,9 @@ symbol_index(const uint64_t symbol) {
     case SYMBOL_ERASER:
     case SYMBOL_S:
     case SYMBOL_CELL:
-    case SYMBOL_INVOKE: return -1;
+    case SYMBOL_UNARY_CALL:
+    case SYMBOL_BINARY_CALL:
+    case SYMBOL_BINARY_CALL_AUX: return -1;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -520,7 +535,9 @@ print_symbol(const uint64_t symbol) {
     case SYMBOL_ERASER: sprintf(buffer, "◉"); break;
     case SYMBOL_S: sprintf(buffer, "S"); break;
     case SYMBOL_CELL: sprintf(buffer, "cell"); break;
-    case SYMBOL_INVOKE: sprintf(buffer, "invoke"); break;
+    case SYMBOL_UNARY_CALL: sprintf(buffer, "unary-call"); break;
+    case SYMBOL_BINARY_CALL: sprintf(buffer, "binary-call"); break;
+    case SYMBOL_BINARY_CALL_AUX: sprintf(buffer, "binary-call-aux"); break;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -549,6 +566,20 @@ bump_index(const uint64_t symbol) {
             print_symbol(symbol));
     }
 }
+
+// Native function pointers
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+// Casting a function pointer to `void *` is not safe by the standard, but many
+// implementationnes permit it because of dynamic loading (e.g., `dlopen`).
+// Here, we perform a two-step conversion: we first cast the user-provided
+// pointer to `void *` & then to `uint64_t`.
+#define U64_OF_FUNCTION(function) ((uint64_t)(void *)(function))
+
+#define UNARY_FUNCTION_OF_U64(function)                                        \
+    ((uint64_t (*)(uint64_t))(void *)(function))
+#define BINARY_FUNCTION_OF_U64(function)                                       \
+    ((uint64_t (*)(uint64_t, uint64_t))(void *)(function))
 
 // O(1) pool allocation & deallocation
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -704,7 +735,9 @@ POOL_ALLOCATOR(scope, sizeof(uint64_t) * 3)
 POOL_ALLOCATOR(duplicator, sizeof(uint64_t) * 4)
 POOL_ALLOCATOR(delimiter, sizeof(uint64_t) * 3)
 POOL_ALLOCATOR(cell, sizeof(uint64_t) * 3)
-POOL_ALLOCATOR(invocation, sizeof(uint64_t) * 4)
+POOL_ALLOCATOR(unary_call, sizeof(uint64_t) * 4)
+POOL_ALLOCATOR(binary_call, sizeof(uint64_t) * 5)
+POOL_ALLOCATOR(binary_call_aux, sizeof(uint64_t) * 5)
 
 #define POOLS                                                                  \
     X(applicator_pool)                                                         \
@@ -714,7 +747,9 @@ POOL_ALLOCATOR(invocation, sizeof(uint64_t) * 4)
     X(duplicator_pool)                                                         \
     X(delimiter_pool)                                                          \
     X(cell_pool)                                                               \
-    X(invocation_pool)
+    X(unary_call_pool)                                                         \
+    X(binary_call_pool)                                                        \
+    X(binary_call_aux_pool)
 
 // clang-format off
 
@@ -1030,12 +1065,13 @@ unfocus(struct multifocus *const restrict focus) {
 
 struct node_graph {
     const struct node root;
-    struct multifocus *annihilations, *commutations, *betas, *invocations;
+    struct multifocus *annihilations, *commutations, *betas, *unary_calls,
+        *binary_calls, *binary_calls_aux;
     uint64_t current_phase;
     bool is_reading_back;
 
 #ifdef OPTISCOPE_ENABLE_STATS
-    uint64_t nannihilations, ncommutations, nbetas, ninvocations;
+    uint64_t nannihilations, ncommutations, nbetas, ncalls;
 #endif
 };
 
@@ -1047,7 +1083,9 @@ is_normalized_graph(const struct node_graph *const restrict graph) {
     return 0 == graph->betas->count &&         //
            0 == graph->annihilations->count && //
            0 == graph->commutations->count &&  //
-           0 == graph->invocations->count;
+           0 == graph->unary_calls->count &&   //
+           0 == graph->binary_calls->count &&  //
+           0 == graph->binary_calls_aux->count;
 }
 
 COMPILER_NONNULL(1) COMPILER_COLD //
@@ -1060,7 +1098,10 @@ free_graph(struct node_graph *const restrict graph) {
     XASSERT(graph->annihilations), XASSERT(0 == graph->annihilations->count);
     XASSERT(graph->commutations), XASSERT(0 == graph->commutations->count);
     XASSERT(graph->betas), XASSERT(0 == graph->betas->count);
-    XASSERT(graph->invocations), XASSERT(0 == graph->invocations->count);
+    XASSERT(graph->unary_calls), XASSERT(0 == graph->unary_calls->count);
+    XASSERT(graph->binary_calls), XASSERT(0 == graph->binary_calls->count);
+    XASSERT(graph->binary_calls_aux),
+        XASSERT(0 == graph->binary_calls_aux->count);
     XASSERT(!graph->is_reading_back);
 
     free(DECODE_ADDRESS(graph->root.ports[0]) - 1 /* back to the symbol */);
@@ -1069,7 +1110,9 @@ free_graph(struct node_graph *const restrict graph) {
     free(graph->annihilations);
     free(graph->commutations);
     free(graph->betas);
-    free(graph->invocations);
+    free(graph->unary_calls);
+    free(graph->binary_calls);
+    free(graph->binary_calls_aux);
 }
 
 COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) COMPILER_HOT //
@@ -1080,56 +1123,43 @@ alloc_node(struct node_graph *const restrict graph, const uint64_t symbol) {
 
     // While it might seem that preallocation caches can increase performance,
     // in fact, they introduced almost a 2x slowdown.
+    (void)0;
 
     uint64_t *ports = NULL;
+
+    // clang-format off
+#define CASE(control, pool_name, transition) \
+    control: ports = pool_name##_alloc(pool_name); \
+    goto transition;
+    // clang-format on
+
     switch (symbol) {
-    case SYMBOL_APPLICATOR:
-        ports = applicator_pool_alloc(applicator_pool);
-        goto assign_port_2;
-    case SYMBOL_LAMBDA:
-        ports = lambda_pool_alloc(lambda_pool);
-        goto assign_port_2;
-    case SYMBOL_ERASER:
-        ports = eraser_pool_alloc(eraser_pool);
-        goto assign_port_0;
-    case SYMBOL_S:
-        ports = scope_pool_alloc(scope_pool); //
-        goto assign_port_1;
-    case SYMBOL_CELL:
-        ports = cell_pool_alloc(cell_pool); //
-        goto assign_port_0;
-    case SYMBOL_INVOKE:
-        ports = invocation_pool_alloc(invocation_pool);
-        goto assign_port_2;
+        CASE(case SYMBOL_APPLICATOR, applicator_pool, set_ports_2);
+        CASE(case SYMBOL_LAMBDA, lambda_pool, set_ports_2);
+        CASE(case SYMBOL_ERASER, eraser_pool, set_ports_0);
+        CASE(case SYMBOL_S, scope_pool, set_ports_1);
+        CASE(case SYMBOL_CELL, cell_pool, set_ports_0);
+        CASE(case SYMBOL_UNARY_CALL, unary_call_pool, set_ports_1);
+        CASE(case SYMBOL_BINARY_CALL, binary_call_pool, set_ports_2);
+        CASE(case SYMBOL_BINARY_CALL_AUX, binary_call_aux_pool, set_ports_2);
+        CASE(duplicator, duplicator_pool, set_ports_2);
+        CASE(delimiter, delimiter_pool, set_ports_1);
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
         else COMPILER_UNREACHABLE();
-    duplicator:
-        ports = duplicator_pool_alloc(duplicator_pool);
-        goto assign_port_2;
-    delimiter:
-        ports = delimiter_pool_alloc(delimiter_pool);
-        goto assign_port_1;
     }
+
+#undef CASE
 
     COMPILER_UNREACHABLE();
 
-#define PORT_VALUE(offset)                                                     \
-    ENCODE_ADDRESS(                                                            \
-        ENCODE_METADATA(UINT64_C(offset), PHASE_VALUE(offset)), UINT64_C(0))
-#define PHASE_VALUE(offset)                                                    \
-    (0 == (offset) ? graph->current_phase /* the principal port */             \
-                   : UINT64_C(0) /* a non-principal port */)
-
-    // clang-format off
-assign_port_2: ports[2] = PORT_VALUE(2);
-assign_port_1: ports[1] = PORT_VALUE(1);
-assign_port_0: ports[0] = PORT_VALUE(0);
-    // clang-format on
-
-#undef PHASE_VALUE
-#undef PORT_VALUE
+set_ports_2:
+    ports[2] = PORT_VALUE(UINT64_C(2), UINT64_C(0), UINT64_C(0));
+set_ports_1:
+    ports[1] = PORT_VALUE(UINT64_C(1), UINT64_C(0), UINT64_C(0));
+set_ports_0:
+    ports[0] = PORT_VALUE(UINT64_C(0), graph->current_phase, UINT64_C(0));
 
     ports[-1] = symbol;
 
@@ -1178,7 +1208,11 @@ free_node(const struct node node) {
     case SYMBOL_ERASER: eraser_pool_free(eraser_pool, p); break;
     case SYMBOL_S: scope_pool_free(scope_pool, p); break;
     case SYMBOL_CELL: cell_pool_free(cell_pool, p); break;
-    case SYMBOL_INVOKE: invocation_pool_free(invocation_pool, p); break;
+    case SYMBOL_UNARY_CALL: unary_call_pool_free(unary_call_pool, p); break;
+    case SYMBOL_BINARY_CALL: binary_call_pool_free(binary_call_pool, p); break;
+    case SYMBOL_BINARY_CALL_AUX:
+        binary_call_aux_pool_free(binary_call_aux_pool, p);
+        break;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -1204,19 +1238,24 @@ register_active_pair(
 
     const uint64_t f_symbol = f.ports[-1], g_symbol = g.ports[-1];
 
-    if (f_symbol == SYMBOL_APPLICATOR && g_symbol == SYMBOL_LAMBDA) {
-        focus_on(graph->betas, f);
-    } else if (g_symbol == SYMBOL_APPLICATOR && f_symbol == SYMBOL_LAMBDA) {
-        focus_on(graph->betas, g);
-    } else if (f_symbol == SYMBOL_INVOKE && g_symbol == SYMBOL_CELL) {
-        focus_on(graph->invocations, f);
-    } else if (g_symbol == SYMBOL_INVOKE && f_symbol == SYMBOL_CELL) {
-        focus_on(graph->invocations, g);
-    } else if (f_symbol == g_symbol) {
-        focus_on(graph->annihilations, f);
-    } else {
-        focus_on(graph->commutations, f);
-    }
+#define MATCH(lhs, rhs) if (f_symbol == lhs && g_symbol == rhs)
+
+    MATCH (SYMBOL_APPLICATOR, SYMBOL_LAMBDA) focus_on(graph->betas, f);
+    else MATCH (SYMBOL_LAMBDA, SYMBOL_APPLICATOR) focus_on(graph->betas, g);
+    else MATCH (SYMBOL_UNARY_CALL, SYMBOL_CELL) focus_on(graph->unary_calls, f);
+    else MATCH (SYMBOL_CELL, SYMBOL_UNARY_CALL) focus_on(graph->unary_calls, g);
+    else MATCH (SYMBOL_BINARY_CALL, SYMBOL_CELL)
+        focus_on(graph->binary_calls, f);
+    else MATCH (SYMBOL_CELL, SYMBOL_BINARY_CALL)
+        focus_on(graph->binary_calls, g);
+    else MATCH (SYMBOL_BINARY_CALL_AUX, SYMBOL_CELL)
+        focus_on(graph->binary_calls_aux, f);
+    else MATCH (SYMBOL_CELL, SYMBOL_BINARY_CALL_AUX)
+        focus_on(graph->binary_calls_aux, g);
+    else if (f_symbol == g_symbol) focus_on(graph->annihilations, f);
+    else focus_on(graph->commutations, f);
+
+#undef MATCH
 }
 
 COMPILER_NONNULL(1) COMPILER_HOT //
@@ -1383,21 +1422,17 @@ graphviz_edge_tailport(
 
     switch (symbol) {
     case SYMBOL_ROOT:
+    case SYMBOL_S:
         switch (i) {
         case 0: return "n";
         case 1: return "s";
         default: COMPILER_UNREACHABLE();
         }
     case SYMBOL_APPLICATOR:
-        if ((is_reading_back ? 0 : 1) == i) {
-            return "n";
-        } else if ((is_reading_back ? 2 : 0) == i) {
-            return "s";
-        } else if ((is_reading_back ? 1 : 2) == i) {
-            return "e";
-        } else {
-            COMPILER_UNREACHABLE();
-        }
+        if ((is_reading_back ? 0 : 1) == i) return "n";
+        else if ((is_reading_back ? 2 : 0) == i) return "s";
+        else if ((is_reading_back ? 1 : 2) == i) return "e";
+        else COMPILER_UNREACHABLE();
     case SYMBOL_LAMBDA:
         switch (i) {
         case 0: return "n";
@@ -1411,10 +1446,11 @@ graphviz_edge_tailport(
         case 0: return "s";
         default: COMPILER_UNREACHABLE();
         }
-    case SYMBOL_S:
+    case SYMBOL_BINARY_CALL:
         switch (i) {
-        case 0: return "n";
-        case 1: return "s";
+        case 0: return "sw";
+        case 1: return "n";
+        case 2: return "se";
         default: COMPILER_UNREACHABLE();
         }
     default:
@@ -1429,7 +1465,8 @@ graphviz_edge_tailport(
         default: COMPILER_UNREACHABLE();
         }
     delimiter:
-    case SYMBOL_INVOKE:
+    case SYMBOL_UNARY_CALL:
+    case SYMBOL_BINARY_CALL_AUX:
         switch (i) {
         case 0: return "s";
         case 1: return "n";
@@ -1904,7 +1941,7 @@ collect_garbage(
         }
 
         if (DECODE_PHASE_METADATA(f.ports[0]) == altered_phase) { continue; }
-        f.ports[0] = SET_PHASE(f.ports[0], altered_phase);
+        set_phase(&f.ports[0], altered_phase);
 
         focus_on(history, f);
 
@@ -1925,7 +1962,7 @@ collect_garbage(
     if (root_found) {
         // Recover the current phase of the modified nodes.
         CONSUME_MULTIFOCUS (history, f) {
-            f.ports[0] = SET_PHASE(f.ports[0], graph->current_phase);
+            set_phase(&f.ports[0], graph->current_phase);
         }
     } else {
         // Free the nodes not reachable from the root.
@@ -2007,6 +2044,29 @@ debug_interaction(
 
 #endif // OPTISCOPE_ENABLE_TRACING
 
+COMPILER_HOT //
+static void
+transfer_node_data(const struct node source, const struct node destination) {
+    XASSERT(source.ports), XASSERT(destination.ports);
+
+    switch (source.ports[-1]) {
+    case SYMBOL_CELL:
+        destination.ports[1] = source.ports[1]; //
+        break;
+    case SYMBOL_UNARY_CALL:
+        destination.ports[2] = source.ports[2]; //
+        break;
+    case SYMBOL_BINARY_CALL:
+        destination.ports[3] = source.ports[3]; //
+        break;
+    case SYMBOL_BINARY_CALL_AUX:
+        destination.ports[2] = source.ports[2];
+        destination.ports[3] = source.ports[3];
+        break;
+    default: break;
+    }
+}
+
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 rewire_vertically(
@@ -2046,6 +2106,9 @@ protrude_node(
     }
 }
 
+#define TYPE_CHECK_RULE(name)                                                  \
+    COMPILER_UNUSED static const Rule name##_type_check = name
+
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 annihilate(
@@ -2065,17 +2128,17 @@ annihilate(
     // clang-format off
     const uint64_t n = ports_count(f.ports[-1]) - 1;
     switch (n) {
-#define X(i) \
+#define CASE(i) \
     case (i): rewire_vertically(graph, f, g, (i)); COMPILER_FALLTHROUGH
-        X(2); X(1);
-#undef X
+        CASE(2); CASE(1);
+#undef CASE
     case 0: break;
     default: COMPILER_UNREACHABLE();
     }
     // clang-format on
 }
 
-COMPILER_UNUSED static const Rule annihilate_type_check = annihilate;
+TYPE_CHECK_RULE(annihilate);
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
@@ -2140,10 +2203,12 @@ prologue:;
     switch (m) {
     case 2:
         f_updates[1] = alloc_node(graph, f_symbol);
+        transfer_node_data(f, f_updates[1]);
         protrude_node(graph, f_updates[1], g.ports[1]);
         COMPILER_FALLTHROUGH;
     case 1:
         f_updates[0] = alloc_node(graph, f_symbol);
+        transfer_node_data(f, f_updates[0]);
         protrude_node(graph, f_updates[0], g.ports[m]);
         break;
     case 0: break;
@@ -2153,21 +2218,22 @@ prologue:;
     switch (n) {
     case 2:
         g_updates[1] = alloc_node(graph, g_symbol);
+        transfer_node_data(g, g_updates[1]);
         protrude_node(graph, g_updates[1], f.ports[2]);
         COMPILER_FALLTHROUGH;
     case 1:
         g_updates[0] = alloc_node(graph, g_symbol);
+        transfer_node_data(g, g_updates[0]);
         protrude_node(graph, g_updates[0], f.ports[1]);
         break;
     case 0: break;
     default: COMPILER_UNREACHABLE();
     }
 
+    // Hint the compiler to automatically unroll the following loop.
     XASSERT(m <= 2), XASSERT(n <= 2);
 
     // Connect the new nodes among themselves.
-    // Manually unrolling this loop into a sequence of conditionnes did not give
-    // us a noticeable performance benefit.
     for (uint8_t i = 0; i < m; i++) {
         for (uint8_t j = 0; j < n; j++) {
             connect_ports(
@@ -2178,7 +2244,7 @@ prologue:;
     graphviz_commute_cluster(f_updates, g_updates, m, n);
 }
 
-COMPILER_UNUSED static const Rule commute_type_check = commute;
+TYPE_CHECK_RULE(commute);
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
@@ -2230,31 +2296,11 @@ beta(
     }
 }
 
-COMPILER_UNUSED static const Rule beta_type_check = beta;
-
-// See `u64_value_of_function`.
-COMPILER_CONST COMPILER_HOT //
-inline static uint64_t (*function_of_u64_value(const uint64_t function))(
-    uint64_t value) {
-    XASSERT(0 != function);
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-    return (uint64_t (*)(uint64_t value))(void *)function;
-#pragma GCC diagnostic pop
-}
-
-COMPILER_HOT //
-inline static uint64_t
-invoke_function(const uint64_t function, const uint64_t value) {
-    XASSERT(0 != function);
-
-    return (function_of_u64_value(function))(value);
-}
+TYPE_CHECK_RULE(beta);
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
-invoke_rule(
+do_unary_call(
     // clang-format off
     struct node_graph *const restrict graph, const struct node f, const struct node g) {
     // clang-format on
@@ -2262,20 +2308,84 @@ invoke_rule(
     XASSERT(!graph->is_reading_back);
     XASSERT(f.ports), XASSERT(g.ports);
     assert(is_interaction(f, g));
-    XASSERT(SYMBOL_INVOKE == f.ports[-1]), XASSERT(SYMBOL_CELL == g.ports[-1]);
+    XASSERT(SYMBOL_UNARY_CALL == f.ports[-1]),
+        XASSERT(SYMBOL_CELL == g.ports[-1]);
 
     debug_interaction(__func__, graph, f, g);
 
 #ifdef OPTISCOPE_ENABLE_STATS
-    graph->ninvocations++;
+    graph->ncalls++;
 #endif
 
     const struct node cell = alloc_node(graph, SYMBOL_CELL);
-    connect_ports(&cell.ports[0], DECODE_ADDRESS(f.ports[1]));
-    cell.ports[1] = invoke_function(f.ports[2], g.ports[1]);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+    cell.ports[1] = (UNARY_FUNCTION_OF_U64(f.ports[2]))(g.ports[1]);
+#pragma GCC diagnostic pop
+    protrude_node(graph, cell, f.ports[1]);
 }
 
-COMPILER_UNUSED static const Rule invoke_type_check = invoke_rule;
+TYPE_CHECK_RULE(do_unary_call);
+
+COMPILER_NONNULL(1) COMPILER_HOT //
+static void
+do_binary_call(
+    // clang-format off
+    struct node_graph *const restrict graph, const struct node f, const struct node g) {
+    // clang-format on
+    assert(graph);
+    XASSERT(!graph->is_reading_back);
+    XASSERT(f.ports), XASSERT(g.ports);
+    assert(is_interaction(f, g));
+    XASSERT(SYMBOL_BINARY_CALL == f.ports[-1]),
+        XASSERT(SYMBOL_CELL == g.ports[-1]);
+
+    debug_interaction(__func__, graph, f, g);
+
+#ifdef OPTISCOPE_ENABLE_STATS
+    graph->ncalls++;
+#endif
+
+    const struct node aux = alloc_node(graph, SYMBOL_BINARY_CALL_AUX);
+    connect_ports(&aux.ports[1], DECODE_ADDRESS(f.ports[1]));
+    aux.ports[2] = f.ports[3];
+    aux.ports[3] = g.ports[1];
+    protrude_node(graph, aux, f.ports[2]);
+}
+
+TYPE_CHECK_RULE(do_binary_call);
+
+COMPILER_NONNULL(1) COMPILER_HOT //
+static void
+do_binary_call_aux(
+    // clang-format off
+    struct node_graph *const restrict graph, const struct node f, const struct node g) {
+    // clang-format on
+    assert(graph);
+    XASSERT(!graph->is_reading_back);
+    XASSERT(f.ports), XASSERT(g.ports);
+    assert(is_interaction(f, g));
+    XASSERT(SYMBOL_BINARY_CALL_AUX == f.ports[-1]),
+        XASSERT(SYMBOL_CELL == g.ports[-1]);
+
+    debug_interaction(__func__, graph, f, g);
+
+#ifdef OPTISCOPE_ENABLE_STATS
+    graph->ncalls++;
+#endif
+
+    const struct node cell = alloc_node(graph, SYMBOL_CELL);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+    cell.ports[1] =
+        (BINARY_FUNCTION_OF_U64(f.ports[2]))(f.ports[3], g.ports[1]);
+#pragma GCC diagnostic pop
+    protrude_node(graph, cell, f.ports[1]);
+}
+
+TYPE_CHECK_RULE(do_binary_call_aux);
+
+#undef TYPE_CHECK_RULE
 
 COMPILER_NONNULL(1, 2) COMPILER_HOT //
 static void
@@ -2326,7 +2436,7 @@ iterate_nodes(const struct node_graph *graph, const struct symbol_range range) {
         if (DECODE_PHASE_METADATA(node.ports[0]) == graph->current_phase) {
             continue;
         }
-        node.ports[0] = SET_PHASE(node.ports[0], graph->current_phase);
+        set_phase(&node.ports[0], graph->current_phase);
 
         if (symbol_is_in_range(range, node.ports[-1])) {
             collection = visit(collection, node);
@@ -2484,11 +2594,6 @@ to_lambda_string(
     case SYMBOL_CELL:
         fprintf(stream, "cell[%" PRIu64 "]", node.ports[1]);
         return;
-    case SYMBOL_INVOKE:
-        fprintf(stream, "(invoke[%#llx] ", (unsigned long long)node.ports[1]);
-        to_lambda_string(stream, i, follow_port(&node.ports[0]));
-        fprintf(stream, ")");
-        return;
     default: break;
     }
 
@@ -2517,37 +2622,43 @@ enum lambda_term_type {
     LAMBDA_TERM_LAMBDA,
     LAMBDA_TERM_VAR,
     LAMBDA_TERM_CELL,
-    LAMBDA_TERM_INVOKE,
+    LAMBDA_TERM_UNARY_CALL,
+    LAMBDA_TERM_BINARY_CALL,
 };
 
-struct applicator_payload {
-    struct lambda_term *rator;
-    struct lambda_term *rand;
+struct applicator_data {
+    struct lambda_term *rator, *rand;
 };
 
-struct lambda_payload {
+struct lambda_data {
     struct lambda_term *body;
     uint64_t **dup_ports; // the pointer to the next duplicator tree
                           // port; dynamically assigned
     uint64_t lvl;         // the de Bruijn level; dynamically assigned
 };
 
-struct invoke_payload {
-    uint64_t (*function)(uint64_t value);
+struct unary_call_data {
+    uint64_t (*function)(uint64_t);
     struct lambda_term *rand;
 };
 
-union lambda_term_payload {
-    struct applicator_payload applicator;
-    struct lambda_payload lambda;
-    struct lambda_payload *var; // the pointer to the binding lambda
+struct binary_call_data {
+    uint64_t (*function)(uint64_t, uint64_t);
+    struct lambda_term *lhs, *rhs;
+};
+
+union lambda_term_data {
+    struct applicator_data applicator;
+    struct lambda_data lambda;
+    struct lambda_data *var; // the pointer to the binding lambda
     uint64_t cell;
-    struct invoke_payload invoke;
+    struct unary_call_data u_call;
+    struct binary_call_data b_call;
 };
 
 struct lambda_term {
     enum lambda_term_type ty;
-    union lambda_term_payload payload;
+    union lambda_term_data data;
 };
 
 extern LambdaTerm
@@ -2556,8 +2667,8 @@ applicator(const restrict LambdaTerm rator, const restrict LambdaTerm rand) {
 
     struct lambda_term *const term = xmalloc(sizeof *term);
     term->ty = LAMBDA_TERM_APPLICATOR;
-    term->payload.applicator.rator = rator;
-    term->payload.applicator.rand = rand;
+    term->data.applicator.rator = rator;
+    term->data.applicator.rand = rand;
 
     return term;
 }
@@ -2566,9 +2677,9 @@ extern LambdaTerm
 prelambda(void) {
     struct lambda_term *const term = xmalloc(sizeof *term);
     term->ty = LAMBDA_TERM_LAMBDA;
-    term->payload.lambda.body = NULL;
-    term->payload.lambda.dup_ports = NULL;
-    term->payload.lambda.lvl = 0;
+    term->data.lambda.body = NULL;
+    term->data.lambda.dup_ports = NULL;
+    term->data.lambda.lvl = 0;
 
     return term;
 }
@@ -2579,7 +2690,7 @@ link_lambda_body(
     const restrict LambdaTerm body) {
     assert(binder), assert(body);
 
-    binder->payload.lambda.body = body;
+    binder->data.lambda.body = body;
 
     return binder;
 }
@@ -2591,7 +2702,7 @@ var(const restrict LambdaTerm binder) {
 
     struct lambda_term *const term = xmalloc(sizeof *term);
     term->ty = LAMBDA_TERM_VAR;
-    term->payload.var = &binder->payload.lambda;
+    term->data.var = &binder->data.lambda;
 
     return term;
 }
@@ -2600,21 +2711,37 @@ extern LambdaTerm
 cell(const uint64_t value) {
     struct lambda_term *const term = xmalloc(sizeof *term);
     term->ty = LAMBDA_TERM_CELL;
-    term->payload.cell = value;
+    term->data.cell = value;
 
     return term;
 }
 
 extern LambdaTerm
-invoke(
-    uint64_t (*const function)(uint64_t value),
+unary_call(
+    uint64_t (*const function)(uint64_t),
     const restrict LambdaTerm rand) {
     assert(function), assert(rand);
 
     struct lambda_term *const term = xmalloc(sizeof *term);
-    term->ty = LAMBDA_TERM_INVOKE;
-    term->payload.invoke.function = function;
-    term->payload.invoke.rand = rand;
+    term->ty = LAMBDA_TERM_UNARY_CALL;
+    term->data.u_call.function = function;
+    term->data.u_call.rand = rand;
+
+    return term;
+}
+
+extern LambdaTerm
+binary_call(
+    uint64_t (*const function)(uint64_t, uint64_t),
+    const restrict LambdaTerm lhs,
+    const restrict LambdaTerm rhs) {
+    assert(function), assert(lhs), assert(rhs);
+
+    struct lambda_term *const term = xmalloc(sizeof *term);
+    term->ty = LAMBDA_TERM_BINARY_CALL;
+    term->data.b_call.function = function;
+    term->data.b_call.lhs = lhs;
+    term->data.b_call.rhs = rhs;
 
     return term;
 }
@@ -2626,14 +2753,14 @@ COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1, 2) //
 static uint64_t
 count_binder_usage(
     const struct lambda_term *const restrict term,
-    const struct lambda_payload *const restrict lambda) {
+    const struct lambda_data *const restrict lambda) {
     assert(term);
     assert(lambda);
 
     switch (term->ty) {
     case LAMBDA_TERM_APPLICATOR: {
-        struct lambda_term *const rator = term->payload.applicator.rator, //
-            *const rand = term->payload.applicator.rand;
+        struct lambda_term *const rator = term->data.applicator.rator, //
+            *const rand = term->data.applicator.rand;
         XASSERT(rator);
         XASSERT(rand);
 
@@ -2641,23 +2768,31 @@ count_binder_usage(
                count_binder_usage(rand, lambda);
     }
     case LAMBDA_TERM_LAMBDA: {
-        struct lambda_term *const body = term->payload.lambda.body;
+        struct lambda_term *const body = term->data.lambda.body;
         XASSERT(body);
 
         return count_binder_usage(body, lambda);
     }
     case LAMBDA_TERM_VAR: {
-        struct lambda_payload *this_lambda = term->payload.var;
+        struct lambda_data *this_lambda = term->data.var;
         XASSERT(this_lambda);
 
         return lambda == this_lambda;
     }
     case LAMBDA_TERM_CELL: return 0;
-    case LAMBDA_TERM_INVOKE: {
-        struct lambda_term *const rand = term->payload.invoke.rand;
+    case LAMBDA_TERM_UNARY_CALL: {
+        struct lambda_term *const rand = term->data.u_call.rand;
         XASSERT(rand);
 
         return count_binder_usage(rand, lambda);
+    }
+    case LAMBDA_TERM_BINARY_CALL: {
+        struct lambda_term *const lhs = term->data.b_call.lhs, //
+            *const rhs = term->data.b_call.rhs;
+        XASSERT(lhs), XASSERT(rhs);
+
+        return count_binder_usage(lhs, lambda) +
+               count_binder_usage(rhs, lambda);
     }
     default: COMPILER_UNREACHABLE();
     }
@@ -2724,21 +2859,6 @@ de_bruijn_level_to_index(const uint64_t lvl, const uint64_t var) {
     return lvl - var - 1;
 }
 
-// Casting a function pointer to `void *` is not safe by the standard, but many
-// implementationnes permit it because of dynamic loading (e.g., `dlopen`).
-// Here, we perform a two-step conversion: we first cast the user-provided
-// pointer to `void *` & then to `uint64_t`.
-COMPILER_CONST COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) //
-inline static uint64_t
-u64_value_of_function(uint64_t (*const function)(uint64_t value)) {
-    assert(function);
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-    return (uint64_t)(void *)function;
-#pragma GCC diagnostic pop
-}
-
 COMPILER_NONNULL(1, 2, 3) //
 static void
 go_of_lambda_term(
@@ -2752,8 +2872,8 @@ go_of_lambda_term(
 
     switch (term->ty) {
     case LAMBDA_TERM_APPLICATOR: {
-        struct lambda_term *const rator = term->payload.applicator.rator, //
-            *const rand = term->payload.applicator.rand;
+        struct lambda_term *const rator = term->data.applicator.rator, //
+            *const rand = term->data.applicator.rand;
         XASSERT(rator);
         XASSERT(rand);
 
@@ -2770,8 +2890,8 @@ go_of_lambda_term(
         break;
     }
     case LAMBDA_TERM_LAMBDA: {
-        struct lambda_payload *const tlambda = &term->payload.lambda;
-        struct lambda_term *const body = term->payload.lambda.body;
+        struct lambda_data *const tlambda = &term->data.lambda;
+        struct lambda_term *const body = term->data.lambda.body;
         XASSERT(tlambda);
         XASSERT(body);
 
@@ -2794,7 +2914,7 @@ go_of_lambda_term(
         break;
     }
     case LAMBDA_TERM_VAR: {
-        struct lambda_payload *const lambda = term->payload.var;
+        struct lambda_data *const lambda = term->data.var;
         XASSERT(lambda);
 
         const uint64_t idx = de_bruijn_level_to_index(lvl, lambda->lvl);
@@ -2810,7 +2930,7 @@ go_of_lambda_term(
         break;
     }
     case LAMBDA_TERM_CELL: {
-        const uint64_t value = term->payload.cell;
+        const uint64_t value = term->data.cell;
 
         const struct node cell = alloc_node(graph, SYMBOL_CELL);
         cell.ports[1] = value;
@@ -2818,19 +2938,44 @@ go_of_lambda_term(
 
         break;
     }
-    case LAMBDA_TERM_INVOKE: {
-        uint64_t (*const function)(uint64_t value) =
-            term->payload.invoke.function;
-        struct lambda_term *const rand = term->payload.invoke.rand;
+    case LAMBDA_TERM_UNARY_CALL: {
+        uint64_t (*const function)(uint64_t) = term->data.u_call.function;
+        struct lambda_term *const rand = term->data.u_call.rand;
         XASSERT(function);
         XASSERT(rand);
 
-        const struct node invocation = alloc_node(graph, SYMBOL_INVOKE);
-        invocation.ports[2] = u64_value_of_function(function);
-        go_of_lambda_term(graph, rand, &invocation.ports[0], lvl);
-        connect_ports(&invocation.ports[1], output_port);
+        const struct node call = alloc_node(graph, SYMBOL_UNARY_CALL);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+        call.ports[2] = U64_OF_FUNCTION(function);
+#pragma GCC diagnostic pop
+        go_of_lambda_term(graph, rand, &call.ports[0], lvl);
+        connect_ports(&call.ports[1], output_port);
+
         register_node_if_active(
-            graph, invocation); // either commutation or invocation
+            graph, call); // either a ready call or commutation
+
+        break;
+    }
+    case LAMBDA_TERM_BINARY_CALL: {
+        uint64_t (*const function)(uint64_t, uint64_t) = //
+            term->data.b_call.function;
+        struct lambda_term *const lhs = term->data.b_call.lhs, //
+            *const rhs = term->data.b_call.rhs;
+        XASSERT(function);
+        XASSERT(rand);
+
+        const struct node call = alloc_node(graph, SYMBOL_BINARY_CALL);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+        call.ports[3] = U64_OF_FUNCTION(function);
+#pragma GCC diagnostic pop
+        go_of_lambda_term(graph, lhs, &call.ports[0], lvl);
+        go_of_lambda_term(graph, rhs, &call.ports[2], lvl);
+        connect_ports(&call.ports[1], output_port);
+
+        register_node_if_active(
+            graph, call); // either a ready call or commutation
 
         break;
     }
@@ -2858,7 +3003,9 @@ of_lambda_term(struct lambda_term *const restrict term) {
         .annihilations = xcalloc(1, sizeof *graph.annihilations),
         .commutations = xcalloc(1, sizeof *graph.commutations),
         .betas = xcalloc(1, sizeof *graph.betas),
-        .invocations = xcalloc(1, sizeof *graph.invocations),
+        .unary_calls = xcalloc(1, sizeof *graph.unary_calls),
+        .binary_calls = xcalloc(1, sizeof *graph.binary_calls),
+        .binary_calls_aux = xcalloc(1, sizeof *graph.binary_calls_aux),
         .current_phase = PHASE_INITIAL,
         .is_reading_back = false,
 
@@ -2866,7 +3013,7 @@ of_lambda_term(struct lambda_term *const restrict term) {
         .nannihilations = 0,
         .ncommutations = 0,
         .nbetas = 0,
-        .ninvocations = 0,
+        .ncalls = 0,
 #endif
     };
 
@@ -2894,8 +3041,16 @@ normalize_x_rules(struct node_graph *const restrict graph) {
 
         CONSUME_MULTIFOCUS (graph->betas, f) { interact(graph, beta, f); }
 
-        CONSUME_MULTIFOCUS (graph->invocations, f) {
-            interact(graph, invoke_rule, f);
+        CONSUME_MULTIFOCUS (graph->unary_calls, f) {
+            interact(graph, do_unary_call, f);
+        }
+
+        CONSUME_MULTIFOCUS (graph->binary_calls, f) {
+            interact(graph, do_binary_call, f);
+        }
+
+        CONSUME_MULTIFOCUS (graph->binary_calls_aux, f) {
+            interact(graph, do_binary_call_aux, f);
         }
 
     auxiliary_rules:
