@@ -2,7 +2,9 @@
 
 set -e
 
-options="-Wall -Wextra -std=gnu99 -O3 -march=native -DNDEBUG -Wno-unused-function"
+optiscope_options="-DNDEBUG -DOPTISCOPE_MAX_COMMUTATIONS=1000000"
+compiler_options="-Wall -Wextra -std=gnu99 -O3 -march=native -Wno-unused-function"
+options="$optiscope_options $compiler_options"
 
 mimalloc="/usr/local/lib/libmimalloc.so"
 
