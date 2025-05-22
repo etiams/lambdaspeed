@@ -2720,7 +2720,8 @@ extern LambdaTerm
 unary_call(
     uint64_t (*const function)(uint64_t),
     const restrict LambdaTerm rand) {
-    assert(function), assert(rand);
+    assert(function);
+    assert(rand);
 
     struct lambda_term *const term = xmalloc(sizeof *term);
     term->ty = LAMBDA_TERM_UNARY_CALL;
@@ -2735,7 +2736,8 @@ binary_call(
     uint64_t (*const function)(uint64_t, uint64_t),
     const restrict LambdaTerm lhs,
     const restrict LambdaTerm rhs) {
-    assert(function), assert(lhs), assert(rhs);
+    assert(function);
+    assert(lhs), assert(rhs);
 
     struct lambda_term *const term = xmalloc(sizeof *term);
     term->ty = LAMBDA_TERM_BINARY_CALL;
@@ -2874,8 +2876,7 @@ go_of_lambda_term(
     case LAMBDA_TERM_APPLICATOR: {
         struct lambda_term *const rator = term->data.applicator.rator, //
             *const rand = term->data.applicator.rand;
-        XASSERT(rator);
-        XASSERT(rand);
+        XASSERT(rator), XASSERT(rand);
 
         const struct node applicator = alloc_node(graph, SYMBOL_APPLICATOR);
         go_of_lambda_term(graph, rator, &applicator.ports[0], lvl);
@@ -2963,7 +2964,7 @@ go_of_lambda_term(
         struct lambda_term *const lhs = term->data.b_call.lhs, //
             *const rhs = term->data.b_call.rhs;
         XASSERT(function);
-        XASSERT(rand);
+        XASSERT(lhs), XASSERT(rhs);
 
         const struct node call = alloc_node(graph, SYMBOL_BINARY_CALL);
 #pragma GCC diagnostic push
