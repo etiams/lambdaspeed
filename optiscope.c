@@ -1982,36 +1982,94 @@ collect_garbage(
 // Interaction rules
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-// clang-format off
-typedef void (*Rule)
-    (struct node_graph *const restrict graph, struct node f, struct node g);
-// clang-format on
-
-COMPILER_PURE COMPILER_WARN_UNUSED_RESULT //
-inline static bool
-is_annihilation(const struct node f, const struct node g) {
-    XASSERT(f.ports), XASSERT(g.ports);
-
-    return is_interaction(f, g) && f.ports[-1] == g.ports[-1];
-}
-
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT //
 inline static bool
 is_beta(const struct node f, const struct node g) {
     XASSERT(f.ports), XASSERT(g.ports);
 
-    return is_interaction(f, g) &&
-           (SYMBOL_APPLICATOR == f.ports[-1] && SYMBOL_LAMBDA == g.ports[-1]);
+    return SYMBOL_APPLICATOR == f.ports[-1] && SYMBOL_LAMBDA == g.ports[-1];
 }
 
-COMPILER_PURE COMPILER_WARN_UNUSED_RESULT //
-inline static bool
-is_commutation(const struct node f, const struct node g) {
-    XASSERT(f.ports), XASSERT(g.ports);
+#ifndef NDEBUG
 
-    return is_interaction(f, g) && !is_beta(f, g) && !is_beta(g, f) &&
-           f.ports[-1] != g.ports[-1];
+static void
+assert_annihilation(const struct node f, const struct node g) {
+    assert(f.ports), assert(g.ports);
+    assert(is_interaction(f, g));
+    assert(SYMBOL_APPLICATOR != f.ports[-1]);
+    assert(SYMBOL_LAMBDA != f.ports[-1]);
+    assert(f.ports[-1] == g.ports[-1]);
 }
+
+static void
+assert_beta(
+    const struct node_graph *const restrict graph,
+    const struct node f,
+    const struct node g) {
+    assert(graph);
+    assert(!graph->is_reading_back);
+    assert(f.ports), assert(g.ports);
+    assert(is_interaction(f, g));
+    assert(is_beta(f, g));
+}
+
+static void
+assert_commutation(const struct node f, const struct node g) {
+    assert(f.ports), assert(g.ports);
+    assert(is_interaction(f, g));
+    assert(!is_beta(f, g)), assert(!is_beta(g, f));
+    assert(f.ports[-1] != g.ports[-1]);
+}
+
+static void
+assert_unary_call(
+    const struct node_graph *const restrict graph,
+    const struct node f,
+    const struct node g) {
+    assert(graph);
+    assert(!graph->is_reading_back);
+    assert(f.ports), assert(g.ports);
+    assert(is_interaction(f, g));
+    assert(SYMBOL_UNARY_CALL == f.ports[-1]);
+    assert(SYMBOL_CELL == g.ports[-1]);
+}
+
+static void
+assert_binary_call(
+    const struct node_graph *const restrict graph,
+    const struct node f,
+    const struct node g) {
+    assert(graph);
+    assert(!graph->is_reading_back);
+    assert(f.ports), assert(g.ports);
+    assert(is_interaction(f, g));
+    assert(SYMBOL_BINARY_CALL == f.ports[-1]);
+    assert(SYMBOL_CELL == g.ports[-1]);
+}
+
+static void
+assert_binary_call_aux(
+    const struct node_graph *const restrict graph,
+    const struct node f,
+    const struct node g) {
+    assert(graph);
+    assert(!graph->is_reading_back);
+    assert(f.ports), assert(g.ports);
+    assert(is_interaction(f, g));
+    assert(SYMBOL_BINARY_CALL_AUX == f.ports[-1]);
+    assert(SYMBOL_CELL == g.ports[-1]);
+}
+
+#else
+
+#define assert_annihilation(f, g)           ((void)0)
+#define assert_beta(graph, f, g)            ((void)0)
+#define assert_commutation(f, g)            ((void)0)
+#define assert_unary_call(graph, f, g)      ((void)0)
+#define assert_binary_call(graph, f, g)     ((void)0)
+#define assert_binary_call_aux(graph, f, g) ((void)0)
+
+#endif // NDEBUG
 
 #ifdef OPTISCOPE_ENABLE_TRACING
 
@@ -2106,6 +2164,11 @@ protrude_node(
     }
 }
 
+// clang-format off
+typedef void (*Rule)
+    (struct node_graph *const restrict graph, struct node f, struct node g);
+// clang-format on
+
 #define TYPE_CHECK_RULE(name)                                                  \
     COMPILER_UNUSED static const Rule name##_type_check = name
 
@@ -2115,10 +2178,7 @@ annihilate(
     // clang-format off
     struct node_graph *const restrict graph, const struct node f, const struct node g) {
     // clang-format on
-    assert(graph);
-    XASSERT(f.ports), XASSERT(g.ports);
-    assert(is_annihilation(f, g));
-
+    assert_annihilation(f, g);
     debug_interaction(__func__, graph, f, g);
 
 #ifdef OPTISCOPE_ENABLE_STATS
@@ -2143,9 +2203,7 @@ TYPE_CHECK_RULE(annihilate);
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 commute(struct node_graph *const restrict graph, struct node f, struct node g) {
-    assert(graph);
-    XASSERT(f.ports), XASSERT(g.ports);
-    assert(is_commutation(f, g));
+    assert_commutation(f, g);
 
 prologue:;
 
@@ -2252,13 +2310,7 @@ beta(
     // clang-format off
     struct node_graph *const restrict graph, const struct node f, const struct node g) {
     // clang-format on
-    assert(graph);
-    XASSERT(!graph->is_reading_back);
-    XASSERT(f.ports), XASSERT(g.ports);
-    assert(is_interaction(f, g));
-    XASSERT(SYMBOL_APPLICATOR == f.ports[-1]),
-        XASSERT(SYMBOL_LAMBDA == g.ports[-1]);
-
+    assert_beta(graph, f, g);
     debug_interaction(__func__, graph, f, g);
 
 #ifdef OPTISCOPE_ENABLE_STATS
@@ -2304,13 +2356,7 @@ do_unary_call(
     // clang-format off
     struct node_graph *const restrict graph, const struct node f, const struct node g) {
     // clang-format on
-    assert(graph);
-    XASSERT(!graph->is_reading_back);
-    XASSERT(f.ports), XASSERT(g.ports);
-    assert(is_interaction(f, g));
-    XASSERT(SYMBOL_UNARY_CALL == f.ports[-1]),
-        XASSERT(SYMBOL_CELL == g.ports[-1]);
-
+    assert_unary_call(graph, f, g);
     debug_interaction(__func__, graph, f, g);
 
 #ifdef OPTISCOPE_ENABLE_STATS
@@ -2333,13 +2379,7 @@ do_binary_call(
     // clang-format off
     struct node_graph *const restrict graph, const struct node f, const struct node g) {
     // clang-format on
-    assert(graph);
-    XASSERT(!graph->is_reading_back);
-    XASSERT(f.ports), XASSERT(g.ports);
-    assert(is_interaction(f, g));
-    XASSERT(SYMBOL_BINARY_CALL == f.ports[-1]),
-        XASSERT(SYMBOL_CELL == g.ports[-1]);
-
+    assert_binary_call(graph, f, g);
     debug_interaction(__func__, graph, f, g);
 
 #ifdef OPTISCOPE_ENABLE_STATS
@@ -2361,13 +2401,7 @@ do_binary_call_aux(
     // clang-format off
     struct node_graph *const restrict graph, const struct node f, const struct node g) {
     // clang-format on
-    assert(graph);
-    XASSERT(!graph->is_reading_back);
-    XASSERT(f.ports), XASSERT(g.ports);
-    assert(is_interaction(f, g));
-    XASSERT(SYMBOL_BINARY_CALL_AUX == f.ports[-1]),
-        XASSERT(SYMBOL_CELL == g.ports[-1]);
-
+    assert_binary_call_aux(graph, f, g);
     debug_interaction(__func__, graph, f, g);
 
 #ifdef OPTISCOPE_ENABLE_STATS
