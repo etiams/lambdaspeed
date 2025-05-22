@@ -1130,7 +1130,7 @@ alloc_node(struct node_graph *const restrict graph, const uint64_t symbol) {
     // clang-format off
 #define CASE(control, pool_name, transition) \
     control: ports = pool_name##_alloc(pool_name); \
-    goto transition;
+    goto transition
     // clang-format on
 
     switch (symbol) {
