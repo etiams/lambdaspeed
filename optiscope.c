@@ -473,7 +473,7 @@ connect_port_to(
 COMPILER_NONNULL(1, 2) COMPILER_HOT COMPILER_FLATTEN //
 inline static void
 connect_ports(uint64_t *const restrict lhs, uint64_t *const restrict rhs) {
-    debug("%s(%p, %p)", __func__, (void *)lhs, (void *)rhs);
+    debug("%p 🔗 %p", (void *)lhs, (void *)rhs);
 
     // Delegate the assertionnes to `connect_ports_to`.
     assert(true);
@@ -1206,7 +1206,7 @@ set_ports_0:
 
     ports[-1] = symbol;
 
-    debug("%s(%s)", __func__, print_node((struct node){ports}));
+    debug("🔨 %s", print_node((struct node){ports}));
 
     return (struct node){ports};
 }
@@ -1222,7 +1222,7 @@ static void clear_graphviz_cluster_node(const struct node node);
 COMPILER_HOT //
 static void
 free_node(const struct node node) {
-    debug("%s(%p)", __func__, (void *)node.ports);
+    debug("🧹 %p", __func__, (void *)node.ports);
 
     XASSERT(node.ports);
 
