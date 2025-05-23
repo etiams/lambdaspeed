@@ -131,6 +131,14 @@ binary_call(
     const restrict LambdaTerm lhs,
     const restrict LambdaTerm rhs);
 
+/// Construct an if-then-else operation from a condition lambda term, the left &
+/// the right branches.
+extern LambdaTerm
+if_then_else(
+    const restrict LambdaTerm condition,
+    const restrict LambdaTerm if_then,
+    const restrict LambdaTerm if_else);
+
 /// Run the optimal reduction algorithm on the given `term`. The `term` object
 /// will be deallocated automatically.
 extern void

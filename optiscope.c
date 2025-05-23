@@ -359,11 +359,11 @@ set_phase(uint64_t *const restrict port, const uint64_t phase) {
 }
 
 #define MIN_REGULAR_SYMBOL   UINT64_C(0)
-#define MAX_REGULAR_SYMBOL   UINT64_C(9)
-#define INDEX_RANGE          UINT64_C(9223372036854775803)
+#define MAX_REGULAR_SYMBOL   UINT64_C(11)
+#define INDEX_RANGE          UINT64_C(9223372036854775802)
 #define MAX_DUPLICATOR_INDEX (MAX_REGULAR_SYMBOL + INDEX_RANGE)
 #define MAX_DELIMITER_INDEX  (MAX_DUPLICATOR_INDEX + INDEX_RANGE)
-#define MAX_PORTS            UINT64_C(3)
+#define MAX_PORTS            UINT64_C(4)
 #define MAX_AUXILIARY_PORTS  (MAX_PORTS - 1)
 
 STATIC_ASSERT(
@@ -383,6 +383,8 @@ STATIC_ASSERT(
 #define SYMBOL_UNARY_CALL      UINT64_C(7)
 #define SYMBOL_BINARY_CALL     UINT64_C(8)
 #define SYMBOL_BINARY_CALL_AUX UINT64_C(9)
+#define SYMBOL_IF_THEN_ELSE    UINT64_C(10)
+#define SYMBOL_UNUSED          UINT64_C(11)
 #define SYMBOL_DUPLICATOR(i)   (MAX_REGULAR_SYMBOL + 1 + (i))
 #define SYMBOL_DELIMITER(i)    (MAX_DUPLICATOR_INDEX + 1 + (i))
 
@@ -429,6 +431,7 @@ ports_count(const uint64_t symbol) {
     case SYMBOL_BINARY_CALL: return 3;
     case SYMBOL_ERASER:
     case SYMBOL_CELL: return 1;
+    case SYMBOL_IF_THEN_ELSE: return 4;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -494,7 +497,8 @@ symbol_index(const uint64_t symbol) {
     case SYMBOL_CELL:
     case SYMBOL_UNARY_CALL:
     case SYMBOL_BINARY_CALL:
-    case SYMBOL_BINARY_CALL_AUX: return -1;
+    case SYMBOL_BINARY_CALL_AUX:
+    case SYMBOL_IF_THEN_ELSE: return -1;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -534,6 +538,7 @@ print_symbol(const uint64_t symbol) {
     case SYMBOL_UNARY_CALL: sprintf(buffer, "unary-call"); break;
     case SYMBOL_BINARY_CALL: sprintf(buffer, "binary-call"); break;
     case SYMBOL_BINARY_CALL_AUX: sprintf(buffer, "binary-call-aux"); break;
+    case SYMBOL_IF_THEN_ELSE: sprintf(buffer, "if-then-else"); break;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -734,6 +739,7 @@ POOL_ALLOCATOR(cell, sizeof(uint64_t) * 3)
 POOL_ALLOCATOR(unary_call, sizeof(uint64_t) * 4)
 POOL_ALLOCATOR(binary_call, sizeof(uint64_t) * 5)
 POOL_ALLOCATOR(binary_call_aux, sizeof(uint64_t) * 5)
+POOL_ALLOCATOR(if_then_else, sizeof(uint64_t) * 5)
 
 #define ALLOC_POOL_OBJECT(pool_name)        pool_name##_alloc(pool_name)
 #define FREE_POOL_OBJECT(pool_name, object) pool_name##_free(pool_name, object)
@@ -748,7 +754,8 @@ POOL_ALLOCATOR(binary_call_aux, sizeof(uint64_t) * 5)
     X(cell_pool)                                                               \
     X(unary_call_pool)                                                         \
     X(binary_call_pool)                                                        \
-    X(binary_call_aux_pool)
+    X(binary_call_aux_pool)                                                    \
+    X(if_then_else_pool)
 
 #define X(pool_name) static struct pool_name *pool_name = NULL;
 POOLS
@@ -868,13 +875,20 @@ print_node(const struct node node) {
         sprintf(buffer, "%s [%p, %p]", ssymbol, (void *)&p[0], (void *)&p[1]);
         break;
     case 3:
+        // clang-format off
         sprintf(
-            buffer,
-            "%s [%p, %p, %p]",
-            ssymbol,
-            (void *)&p[0],
-            (void *)&p[1],
-            (void *)&p[2]);
+            buffer, "%s [%p, %p, %p]", ssymbol,
+            (void *)&p[0], (void *)&p[1], (void *)&p[2]
+        );
+        // clang-format on
+        break;
+    case 4:
+        // clang-format off
+        sprintf(
+            buffer, "%s [%p, %p, %p, %p]", ssymbol,
+            (void *)&p[0], (void *)&p[1], (void *)&p[2], (void *)&p[3]
+        );
+        // clang-format on
         break;
     default: COMPILER_UNREACHABLE();
     }
@@ -1064,13 +1078,14 @@ unfocus(struct multifocus *const restrict focus) {
 
 struct context {
     const struct node root;
-    struct multifocus *annihilations, *commutations, *betas, *unary_calls,
-        *binary_calls, *binary_calls_aux;
+    struct multifocus *annihilations, *commutations, *betas, //
+        *unary_calls, *binary_calls, *binary_calls_aux, *if_then_elses;
     uint64_t current_phase;
     bool is_reading_back;
 
 #ifdef OPTISCOPE_ENABLE_STATS
-    uint64_t nannihilations, ncommutations, nbetas, ncalls;
+    uint64_t nannihilations, ncommutations, nbetas, //
+        ncalls, nif_then_elses;
 #endif
 };
 
@@ -1079,12 +1094,13 @@ inline static bool
 is_normalized_graph(const struct context *const restrict graph) {
     assert(graph);
 
-    return 0 == graph->betas->count &&         //
-           0 == graph->annihilations->count && //
-           0 == graph->commutations->count &&  //
-           0 == graph->unary_calls->count &&   //
-           0 == graph->binary_calls->count &&  //
-           0 == graph->binary_calls_aux->count;
+    return 0 == graph->betas->count &&            //
+           0 == graph->annihilations->count &&    //
+           0 == graph->commutations->count &&     //
+           0 == graph->unary_calls->count &&      //
+           0 == graph->binary_calls->count &&     //
+           0 == graph->binary_calls_aux->count && //
+           0 == graph->if_then_elses->count;
 }
 
 COMPILER_NONNULL(1) COMPILER_COLD //
@@ -1101,6 +1117,7 @@ free_graph(struct context *const restrict graph) {
     XASSERT(graph->binary_calls), XASSERT(0 == graph->binary_calls->count);
     XASSERT(graph->binary_calls_aux),
         XASSERT(0 == graph->binary_calls_aux->count);
+    XASSERT(graph->if_then_elses), XASSERT(0 == graph->if_then_elses->count);
     XASSERT(!graph->is_reading_back);
 
     free(DECODE_ADDRESS(graph->root.ports[0]) - 1 /* back to the symbol */);
@@ -1112,6 +1129,7 @@ free_graph(struct context *const restrict graph) {
     free(graph->unary_calls);
     free(graph->binary_calls);
     free(graph->binary_calls_aux);
+    free(graph->if_then_elses);
 }
 
 COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) COMPILER_HOT //
@@ -1160,6 +1178,9 @@ alloc_node_from(
             ports[2] = prototype->ports[2], ports[3] = prototype->ports[3];
         }
         goto set_ports_2;
+    case SYMBOL_IF_THEN_ELSE:
+        ports = ALLOC_POOL_OBJECT(if_then_else_pool);
+        goto set_ports_3;
         // clang-format off
     duplicator:
         ports = ALLOC_POOL_OBJECT(duplicator_pool); goto set_ports_2;
@@ -1174,6 +1195,8 @@ alloc_node_from(
 
     COMPILER_UNREACHABLE();
 
+set_ports_3:
+    ports[3] = PORT_VALUE(UINT64_C(3), UINT64_C(0), UINT64_C(0));
 set_ports_2:
     ports[2] = PORT_VALUE(UINT64_C(2), UINT64_C(0), UINT64_C(0));
 set_ports_1:
@@ -1235,6 +1258,7 @@ free_node(const struct node node) {
     case SYMBOL_BINARY_CALL_AUX:
         FREE_POOL_OBJECT(binary_call_aux_pool, p);
         break;
+    case SYMBOL_IF_THEN_ELSE: FREE_POOL_OBJECT(if_then_else_pool, p); break;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
@@ -1276,6 +1300,10 @@ register_active_pair(
         focus_on(graph->binary_calls_aux, f);
     } else if (SYMBOL_BINARY_CALL_AUX == gsym && SYMBOL_CELL == fsym) {
         focus_on(graph->binary_calls_aux, g);
+    } else if (SYMBOL_IF_THEN_ELSE == fsym && SYMBOL_CELL == gsym) {
+        focus_on(graph->if_then_elses, f);
+    } else if (SYMBOL_IF_THEN_ELSE == gsym && SYMBOL_CELL == fsym) {
+        focus_on(graph->if_then_elses, g);
     } else if (fsym == gsym) {
         focus_on(graph->annihilations, f);
     } else {
@@ -1360,6 +1388,17 @@ graphviz_node_xlabel(const struct node node) {
             (void *)&p[0],
             (void *)&p[1],
             (void *)&p[2]);
+        break;
+    case 4:
+        sprintf(
+            buffer,
+            GRAPHVIZ_ADDRESS_WIDTH_LINE
+            "<BR/>| %p |<BR/>| %p |<BR/>| %p |<BR/>| %p |<BR/>" //
+            GRAPHVIZ_ADDRESS_WIDTH_LINE,
+            (void *)&p[0],
+            (void *)&p[1],
+            (void *)&p[2],
+            (void *)&p[3]);
         break;
     default: COMPILER_UNREACHABLE();
     }
@@ -1474,6 +1513,14 @@ graphviz_edge_tailport(
         case 0: return "sw";
         case 1: return "n";
         case 2: return "se";
+        default: COMPILER_UNREACHABLE();
+        }
+    case SYMBOL_IF_THEN_ELSE:
+        switch (i) {
+        case 0: return "sw";
+        case 1: return "n";
+        case 2: return "se";
+        case 3: return "s";
         default: COMPILER_UNREACHABLE();
         }
     default:
@@ -2107,6 +2154,19 @@ assert_binary_call_aux(
     assert(SYMBOL_CELL == g.ports[-1]);
 }
 
+static void
+assert_if_then_else(
+    const struct context *const restrict graph,
+    const struct node f,
+    const struct node g) {
+    assert(graph);
+    assert(!graph->is_reading_back);
+    assert(f.ports), assert(g.ports);
+    assert(is_interaction(f, g));
+    assert(SYMBOL_IF_THEN_ELSE == f.ports[-1]);
+    assert(SYMBOL_CELL == g.ports[-1]);
+}
+
 #else
 
 #define assert_annihilation(f, g)           ((void)0)
@@ -2115,6 +2175,7 @@ assert_binary_call_aux(
 #define assert_unary_call(graph, f, g)      ((void)0)
 #define assert_binary_call(graph, f, g)     ((void)0)
 #define assert_binary_call_aux(graph, f, g) ((void)0)
+#define assert_if_then_else(graph, f, g)    ((void)0)
 
 #endif // NDEBUG
 
@@ -2425,6 +2486,35 @@ do_binary_call_aux(
 
 TYPE_CHECK_RULE(do_binary_call_aux);
 
+COMPILER_NONNULL(1) COMPILER_HOT //
+static void
+do_if_then_else(
+    // clang-format off
+    struct context *const restrict graph, const struct node f, const struct node g) {
+    // clang-format on
+    XASSERT(f.ports), XASSERT(g.ports);
+    assert_if_then_else(graph, f, g);
+    debug_interaction(__func__, graph, f, g);
+
+#ifdef OPTISCOPE_ENABLE_STATS
+    graph->nif_then_elses++;
+#endif
+
+    uint64_t *const choice_port =
+        g.ports[1] ? DECODE_ADDRESS(f.ports[3]) : DECODE_ADDRESS(f.ports[2]);
+    const struct node choice_node = //
+        node_of_port(choice_port);
+
+    connect_ports(DECODE_ADDRESS(f.ports[1]), choice_port);
+    register_node_if_active(graph, choice_node);
+
+    if (!is_garbage_node(choice_port)) { //
+        collect_garbage(graph, choice_node);
+    }
+}
+
+TYPE_CHECK_RULE(do_if_then_else);
+
 #undef TYPE_CHECK_RULE
 
 COMPILER_NONNULL(1, 2) COMPILER_HOT //
@@ -2482,17 +2572,12 @@ iterate_nodes(const struct context *graph, const struct symbol_range range) {
             collection = visit(collection, node);
         }
 
-        switch (ports_count(node.ports[-1])) {
-        case 3:
-            focus_on(focus, follow_port(&node.ports[2]));
-            COMPILER_FALLTHROUGH;
-        case 2:
-            focus_on(focus, follow_port(&node.ports[1]));
-            COMPILER_FALLTHROUGH;
-        case 1:
-            focus_on(focus, follow_port(&node.ports[0])); //
-            break;
-        default: COMPILER_UNREACHABLE();
+        const uint8_t nports = ports_count(node.ports[-1]);
+        XASSERT(nports <= MAX_PORTS);
+
+        // For some reason, the order of iteration matters here...
+        for (int8_t i = nports - 1; i >= 0; i--) {
+            focus_on(focus, follow_port(&node.ports[i]));
         }
     }
 
@@ -2664,6 +2749,7 @@ enum lambda_term_type {
     LAMBDA_TERM_CELL,
     LAMBDA_TERM_UNARY_CALL,
     LAMBDA_TERM_BINARY_CALL,
+    LAMBDA_TERM_IF_THEN_ELSE,
 };
 
 struct applicator_data {
@@ -2687,6 +2773,11 @@ struct binary_call_data {
     struct lambda_term *lhs, *rhs;
 };
 
+struct if_then_else_data {
+    struct lambda_term *condition;
+    struct lambda_term *if_then, *if_else;
+};
+
 union lambda_term_data {
     struct applicator_data applicator;
     struct lambda_data lambda;
@@ -2694,6 +2785,7 @@ union lambda_term_data {
     uint64_t cell;
     struct unary_call_data u_call;
     struct binary_call_data b_call;
+    struct if_then_else_data ite;
 };
 
 struct lambda_term {
@@ -2788,6 +2880,23 @@ binary_call(
     return term;
 }
 
+extern LambdaTerm
+if_then_else(
+    const restrict LambdaTerm condition,
+    const restrict LambdaTerm if_then,
+    const restrict LambdaTerm if_else) {
+    assert(condition);
+    assert(if_then), assert(if_else);
+
+    struct lambda_term *const term = xmalloc(sizeof *term);
+    term->ty = LAMBDA_TERM_IF_THEN_ELSE;
+    term->data.ite.condition = condition;
+    term->data.ite.if_then = if_then;
+    term->data.ite.if_else = if_else;
+
+    return term;
+}
+
 // Conversion from a lambda term
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -2835,6 +2944,17 @@ count_binder_usage(
 
         return count_binder_usage(lhs, lambda) +
                count_binder_usage(rhs, lambda);
+    }
+    case LAMBDA_TERM_IF_THEN_ELSE: {
+        struct lambda_term *const condition = term->data.ite.condition, //
+            *const if_then = term->data.ite.if_then,                    //
+                *const if_else = term->data.ite.if_else;
+        XASSERT(condition);
+        XASSERT(if_then), XASSERT(if_else);
+
+        return count_binder_usage(condition, lambda) +
+               count_binder_usage(if_then, lambda) +
+               count_binder_usage(if_else, lambda);
     }
     default: COMPILER_UNREACHABLE();
     }
@@ -2919,9 +3039,9 @@ go_of_lambda_term(
         XASSERT(rator), XASSERT(rand);
 
         const struct node applicator = alloc_node(graph, SYMBOL_APPLICATOR);
+        connect_ports(&applicator.ports[1], output_port);
         go_of_lambda_term(graph, rator, &applicator.ports[0], lvl);
         go_of_lambda_term(graph, rand, &applicator.ports[2], lvl);
-        connect_ports(&applicator.ports[1], output_port);
 
         const struct node lambda = follow_port(&applicator.ports[0]);
         if (is_beta(applicator, lambda)) {
@@ -2937,6 +3057,7 @@ go_of_lambda_term(
         XASSERT(body);
 
         const struct node lambda = alloc_node(graph, SYMBOL_LAMBDA);
+        connect_ports(&lambda.ports[0], output_port);
         const uint64_t nvars = count_binder_usage(body, tlambda);
         uint64_t **dup_ports = NULL;
         if (0 == nvars) {
@@ -2948,7 +3069,7 @@ go_of_lambda_term(
         tlambda->dup_ports = dup_ports;
         tlambda->lvl = lvl;
         go_of_lambda_term(graph, body, &lambda.ports[2], lvl + 1);
-        connect_ports(&lambda.ports[0], output_port);
+
         free(dup_ports);
 
         break;
@@ -2973,8 +3094,8 @@ go_of_lambda_term(
         const uint64_t value = term->data.cell;
 
         const struct node cell = alloc_node(graph, SYMBOL_CELL);
-        cell.ports[1] = value;
         connect_ports(&cell.ports[0], output_port);
+        cell.ports[1] = value;
 
         break;
     }
@@ -2985,12 +3106,12 @@ go_of_lambda_term(
         XASSERT(rand);
 
         const struct node call = alloc_node(graph, SYMBOL_UNARY_CALL);
+        connect_ports(&call.ports[1], output_port);
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
         call.ports[2] = U64_OF_FUNCTION(function);
 #pragma GCC diagnostic pop
         go_of_lambda_term(graph, rand, &call.ports[0], lvl);
-        connect_ports(&call.ports[1], output_port);
 
         register_node_if_active(
             graph, call); // either a ready call or commutation
@@ -3006,16 +3127,34 @@ go_of_lambda_term(
         XASSERT(lhs), XASSERT(rhs);
 
         const struct node call = alloc_node(graph, SYMBOL_BINARY_CALL);
+        connect_ports(&call.ports[1], output_port);
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
         call.ports[3] = U64_OF_FUNCTION(function);
 #pragma GCC diagnostic pop
         go_of_lambda_term(graph, lhs, &call.ports[0], lvl);
         go_of_lambda_term(graph, rhs, &call.ports[2], lvl);
-        connect_ports(&call.ports[1], output_port);
 
         register_node_if_active(
             graph, call); // either a ready call or commutation
+
+        break;
+    }
+    case LAMBDA_TERM_IF_THEN_ELSE: {
+        struct lambda_term *const condition = term->data.ite.condition, //
+            *const if_then = term->data.ite.if_then,                    //
+                *const if_else = term->data.ite.if_else;
+        XASSERT(condition);
+        XASSERT(if_then), XASSERT(if_else);
+
+        const struct node ite = alloc_node(graph, SYMBOL_IF_THEN_ELSE);
+        connect_ports(&ite.ports[1], output_port);
+        go_of_lambda_term(graph, condition, &ite.ports[0], lvl);
+        go_of_lambda_term(graph, if_then, &ite.ports[3], lvl);
+        go_of_lambda_term(graph, if_else, &ite.ports[2], lvl);
+
+        register_node_if_active(
+            graph, ite); // either a ready if-then-else or commutation
 
         break;
     }
@@ -3046,6 +3185,7 @@ of_lambda_term(struct lambda_term *const restrict term) {
         .unary_calls = xcalloc(1, sizeof *graph.unary_calls),
         .binary_calls = xcalloc(1, sizeof *graph.binary_calls),
         .binary_calls_aux = xcalloc(1, sizeof *graph.binary_calls_aux),
+        .if_then_elses = xcalloc(1, sizeof *graph.if_then_elses),
         .current_phase = PHASE_INITIAL,
         .is_reading_back = false,
 
@@ -3054,6 +3194,7 @@ of_lambda_term(struct lambda_term *const restrict term) {
         .ncommutations = 0,
         .nbetas = 0,
         .ncalls = 0,
+        .nif_then_elses = 0,
 #endif
     };
 
@@ -3093,6 +3234,10 @@ normalize_x_rules(struct context *const restrict graph) {
             interact(graph, do_binary_call_aux, f);
         }
 
+        CONSUME_MULTIFOCUS (graph->if_then_elses, f) {
+            interact(graph, do_if_then_else, f);
+        }
+
     auxiliary_rules:
         CONSUME_MULTIFOCUS (graph->annihilations, f) {
             interact(graph, annihilate, f);
@@ -3130,10 +3275,12 @@ optiscope_algorithm(
     printf("Commutation interactions: %" PRIu64 "\n", graph.ncommutations);
     printf("Beta interactions: %" PRIu64 "\n", graph.nbetas);
     printf("Native function calls: %" PRIu64 "\n", graph.ncalls);
+    printf("If-then-elses: %" PRIu64 "\n", graph.nif_then_elses);
+
     printf(
         "Total interactions: %" PRIu64 "\n",
         graph.nannihilations + graph.ncommutations + graph.nbetas +
-            graph.ncalls);
+            graph.nif_then_elses + graph.ncalls);
 #endif
 
     if (NULL == stream) { goto cleanup; }

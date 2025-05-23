@@ -228,7 +228,7 @@ church_xor(void) {
 }
 
 static struct lambda_term *
-if_then_else(void) {
+church_if_then_else(void) {
     struct lambda_term *c, *t, *f;
 
     return lambda(
@@ -236,12 +236,12 @@ if_then_else(void) {
         lambda(t, lambda(f, applicator(applicator(var(c), var(t)), var(f)))));
 }
 
-#define IF_THEN_ELSE(c, t, f)                                                  \
-    applicator(applicator(applicator(if_then_else(), c), t), f)
+#define CHURCH_IF_THEN_ELSE(c, t, f)                                           \
+    applicator(applicator(applicator(church_if_then_else(), c), t), f)
 
 static struct lambda_term *
 boolean_test(void) {
-    return IF_THEN_ELSE(
+    return CHURCH_IF_THEN_ELSE(
         applicator(applicator(church_or(), church_true()), church_false()),
         applicator(
             applicator(
@@ -599,7 +599,7 @@ y_factorial_function(void) {
         f,
         lambda(
             n,
-            IF_THEN_ELSE(
+            CHURCH_IF_THEN_ELSE(
                 applicator(church_is_zero(), var(n)),
                 church_one(),
                 applicator(
@@ -627,10 +627,10 @@ y_fibonacci_function(void) {
         f,
         lambda(
             n,
-            IF_THEN_ELSE(
+            CHURCH_IF_THEN_ELSE(
                 applicator(church_is_zero(), var(n)),
                 church_zero(),
-                IF_THEN_ELSE(
+                CHURCH_IF_THEN_ELSE(
                     applicator(church_is_one(), var(n)),
                     church_one(),
                     applicator(applicator(
@@ -697,7 +697,7 @@ why_factorial_function(void) {
         lambda(
             n,
             applicator(
-                IF_THEN_ELSE(
+                CHURCH_IF_THEN_ELSE(
                     applicator(church_is_zero(), var(n)),
                     lambda(a1, church_one()),
                     lambda(
@@ -773,6 +773,29 @@ binary_arithmetic(void) {
         lambda(
             x,
             binary_call(multiply, binary_call(add, var(x), cell(5)), cell(2))));
+}
+
+// Conditional logic
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+// clang-format off
+static uint64_t equals(const uint64_t x, const uint64_t y)
+    { return x == y; }
+// clang-format on
+
+static struct lambda_term *
+conditionals(void) {
+    struct lambda_term *x;
+
+    return if_then_else(
+        applicator(
+            lambda(
+                x,
+                if_then_else(
+                    binary_call(equals, var(x), cell(100)), cell(0), cell(1))),
+            cell(100)),
+        cell(5),
+        cell(10));
 }
 
 // Examples from the literature
@@ -896,6 +919,7 @@ main(void) {
     TEST_CASE(why_factorial_test, "(λ (λ (1 (1 (1 (1 (1 (1 0))))))))");
     TEST_CASE(unary_arithmetic, "cell[2048]");
     TEST_CASE(binary_arithmetic, "cell[11]");
+    TEST_CASE(conditionals, "cell[10]");
     TEST_CASE(lamping_example, "(λ 0)");
     TEST_CASE(lamping_example_2, "(λ 0)");
     TEST_CASE(asperti_guerrini_example, "(λ (0 0))");
