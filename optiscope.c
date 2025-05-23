@@ -34,10 +34,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "optiscope.h"
 
-#ifndef _DEFAULT_SOURCE
-#define _DEFAULT_SOURCE // in case we use glibc
-#endif
-
 #include <assert.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -739,6 +735,9 @@ POOL_ALLOCATOR(unary_call, sizeof(uint64_t) * 4)
 POOL_ALLOCATOR(binary_call, sizeof(uint64_t) * 5)
 POOL_ALLOCATOR(binary_call_aux, sizeof(uint64_t) * 5)
 
+#define ALLOC_POOL_OBJECT(pool_name)        pool_name##_alloc(pool_name)
+#define FREE_POOL_OBJECT(pool_name, object) pool_name##_free(pool_name, object)
+
 #define POOLS                                                                  \
     X(applicator_pool)                                                         \
     X(lambda_pool)                                                             \
@@ -751,35 +750,35 @@ POOL_ALLOCATOR(binary_call_aux, sizeof(uint64_t) * 5)
     X(binary_call_pool)                                                        \
     X(binary_call_aux_pool)
 
-// clang-format off
-
 #define X(pool_name) static struct pool_name *pool_name = NULL;
 POOLS
 #undef X
 
-#define X(pool_name) \
-    { \
-        XASSERT(NULL == pool_name); \
-        pool_name = pool_name##_create(); \
-        XASSERT(pool_name); \
+#define X(pool_name)                                                           \
+    {                                                                          \
+        XASSERT(NULL == pool_name);                                            \
+        pool_name = pool_name##_create();                                      \
+        XASSERT(pool_name);                                                    \
     }
 
+// clang-format off
 extern void optiscope_open_pools(void) { POOLS }
+// clang-format on
 
 #undef X
 
-#define X(pool_name) \
-    { \
-        XASSERT(pool_name); \
-        pool_name##_close(pool_name); \
-        pool_name = NULL; \
+#define X(pool_name)                                                           \
+    {                                                                          \
+        XASSERT(pool_name);                                                    \
+        pool_name##_close(pool_name);                                          \
+        pool_name = NULL;                                                      \
     }
 
+// clang-format off
 extern void optiscope_close_pools(void) { POOLS }
+// clang-format on
 
 #undef X
-
-// clang-format on
 
 #undef POOLS
 
@@ -929,7 +928,7 @@ is_garbage_node(uint64_t *const restrict port) {
 
 COMPILER_HOT //
 static void
-free_node_if_non_active(const struct node f) {
+free_node_if_not_active(const struct node f) {
     XASSERT(f.ports);
 
     if (is_garbage_node(f.ports)) { return; }
@@ -1063,7 +1062,7 @@ unfocus(struct multifocus *const restrict focus) {
          (focus)->count > 0 ? (f = unfocus(focus), true) : false;              \
          (void)0)
 
-struct node_graph {
+struct context {
     const struct node root;
     struct multifocus *annihilations, *commutations, *betas, *unary_calls,
         *binary_calls, *binary_calls_aux;
@@ -1077,7 +1076,7 @@ struct node_graph {
 
 COMPILER_PURE COMPILER_NONNULL(1) COMPILER_HOT //
 inline static bool
-is_normalized_graph(const struct node_graph *const restrict graph) {
+is_normalized_graph(const struct context *const restrict graph) {
     assert(graph);
 
     return 0 == graph->betas->count &&         //
@@ -1090,7 +1089,7 @@ is_normalized_graph(const struct node_graph *const restrict graph) {
 
 COMPILER_NONNULL(1) COMPILER_COLD //
 static void
-free_graph(struct node_graph *const restrict graph) {
+free_graph(struct context *const restrict graph) {
     debug("%s()", __func__);
 
     assert(graph);
@@ -1117,9 +1116,15 @@ free_graph(struct node_graph *const restrict graph) {
 
 COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) COMPILER_HOT //
 static struct node
-alloc_node(struct node_graph *const restrict graph, const uint64_t symbol) {
+alloc_node_from(
+    struct context *const restrict graph,
+    const uint64_t symbol,
+    const struct node *const restrict prototype) {
     assert(graph);
     XASSERT(SYMBOL_ROOT != symbol);
+#ifndef NDEBUG
+    if (prototype) { assert(prototype->ports); }
+#endif
 
     // While it might seem that preallocation caches can increase performance,
     // in fact, they introduced almost a 2x slowdown.
@@ -1127,30 +1132,45 @@ alloc_node(struct node_graph *const restrict graph, const uint64_t symbol) {
 
     uint64_t *ports = NULL;
 
-    // clang-format off
-#define CASE(control, pool_name, transition) \
-    control: ports = pool_name##_alloc(pool_name); \
-    goto transition
-    // clang-format on
-
     switch (symbol) {
-        CASE(case SYMBOL_APPLICATOR, applicator_pool, set_ports_2);
-        CASE(case SYMBOL_LAMBDA, lambda_pool, set_ports_2);
-        CASE(case SYMBOL_ERASER, eraser_pool, set_ports_0);
-        CASE(case SYMBOL_S, scope_pool, set_ports_1);
-        CASE(case SYMBOL_CELL, cell_pool, set_ports_0);
-        CASE(case SYMBOL_UNARY_CALL, unary_call_pool, set_ports_1);
-        CASE(case SYMBOL_BINARY_CALL, binary_call_pool, set_ports_2);
-        CASE(case SYMBOL_BINARY_CALL_AUX, binary_call_aux_pool, set_ports_2);
-        CASE(duplicator, duplicator_pool, set_ports_2);
-        CASE(delimiter, delimiter_pool, set_ports_1);
+        // clang-format off
+    case SYMBOL_APPLICATOR:
+        ports = ALLOC_POOL_OBJECT(applicator_pool); goto set_ports_2;
+    case SYMBOL_LAMBDA:
+        ports = ALLOC_POOL_OBJECT(lambda_pool); goto set_ports_2;
+    case SYMBOL_ERASER:
+        ports = ALLOC_POOL_OBJECT(eraser_pool); goto set_ports_0;
+        // clang-format on
+    case SYMBOL_S: ports = ALLOC_POOL_OBJECT(scope_pool); goto set_ports_1;
+    case SYMBOL_CELL:
+        ports = ALLOC_POOL_OBJECT(cell_pool);
+        if (prototype) { ports[1] = prototype->ports[1]; }
+        goto set_ports_0;
+    case SYMBOL_UNARY_CALL:
+        ports = ALLOC_POOL_OBJECT(unary_call_pool);
+        if (prototype) { ports[2] = prototype->ports[2]; }
+        goto set_ports_1;
+    case SYMBOL_BINARY_CALL:
+        ports = ALLOC_POOL_OBJECT(binary_call_pool);
+        if (prototype) { ports[3] = prototype->ports[3]; }
+        goto set_ports_2;
+    case SYMBOL_BINARY_CALL_AUX:
+        ports = ALLOC_POOL_OBJECT(binary_call_aux_pool);
+        if (prototype) {
+            ports[2] = prototype->ports[2], ports[3] = prototype->ports[3];
+        }
+        goto set_ports_2;
+        // clang-format off
+    duplicator:
+        ports = ALLOC_POOL_OBJECT(duplicator_pool); goto set_ports_2;
+    delimiter:
+        ports = ALLOC_POOL_OBJECT(delimiter_pool); goto set_ports_1;
+        // clang-format on
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
         else COMPILER_UNREACHABLE();
     }
-
-#undef CASE
 
     COMPILER_UNREACHABLE();
 
@@ -1167,6 +1187,8 @@ set_ports_0:
 
     return (struct node){ports};
 }
+
+#define alloc_node(graph, symbol) alloc_node_from((graph), (symbol), NULL)
 
 // clang-format off
 #ifdef OPTISCOPE_ENABLE_GRAPHVIZ_CLUSTERS
@@ -1203,25 +1225,25 @@ free_node(const struct node node) {
 #endif
 
     switch (symbol) {
-    case SYMBOL_APPLICATOR: applicator_pool_free(applicator_pool, p); break;
-    case SYMBOL_LAMBDA: lambda_pool_free(lambda_pool, p); break;
-    case SYMBOL_ERASER: eraser_pool_free(eraser_pool, p); break;
-    case SYMBOL_S: scope_pool_free(scope_pool, p); break;
-    case SYMBOL_CELL: cell_pool_free(cell_pool, p); break;
-    case SYMBOL_UNARY_CALL: unary_call_pool_free(unary_call_pool, p); break;
-    case SYMBOL_BINARY_CALL: binary_call_pool_free(binary_call_pool, p); break;
+    case SYMBOL_APPLICATOR: FREE_POOL_OBJECT(applicator_pool, p); break;
+    case SYMBOL_LAMBDA: FREE_POOL_OBJECT(lambda_pool, p); break;
+    case SYMBOL_ERASER: FREE_POOL_OBJECT(eraser_pool, p); break;
+    case SYMBOL_S: FREE_POOL_OBJECT(scope_pool, p); break;
+    case SYMBOL_CELL: FREE_POOL_OBJECT(cell_pool, p); break;
+    case SYMBOL_UNARY_CALL: FREE_POOL_OBJECT(unary_call_pool, p); break;
+    case SYMBOL_BINARY_CALL: FREE_POOL_OBJECT(binary_call_pool, p); break;
     case SYMBOL_BINARY_CALL_AUX:
-        binary_call_aux_pool_free(binary_call_aux_pool, p);
+        FREE_POOL_OBJECT(binary_call_aux_pool, p);
         break;
     default:
         if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
         else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
         else COMPILER_UNREACHABLE();
     duplicator:
-        duplicator_pool_free(duplicator_pool, p);
+        FREE_POOL_OBJECT(duplicator_pool, p);
         break;
     delimiter:
-        delimiter_pool_free(delimiter_pool, p);
+        FREE_POOL_OBJECT(delimiter_pool, p);
         break;
     }
 }
@@ -1229,39 +1251,42 @@ free_node(const struct node node) {
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 register_active_pair(
-    struct node_graph *const restrict graph,
+    struct context *const restrict graph,
     const struct node f,
     const struct node g) {
     assert(graph);
     XASSERT(f.ports), XASSERT(g.ports);
     assert(is_interaction(f, g));
 
-    const uint64_t f_symbol = f.ports[-1], g_symbol = g.ports[-1];
+    const uint64_t fsym = f.ports[-1], gsym = g.ports[-1];
 
-#define MATCH(lhs, rhs) if (f_symbol == lhs && g_symbol == rhs)
-
-    MATCH (SYMBOL_APPLICATOR, SYMBOL_LAMBDA) focus_on(graph->betas, f);
-    else MATCH (SYMBOL_LAMBDA, SYMBOL_APPLICATOR) focus_on(graph->betas, g);
-    else MATCH (SYMBOL_UNARY_CALL, SYMBOL_CELL) focus_on(graph->unary_calls, f);
-    else MATCH (SYMBOL_CELL, SYMBOL_UNARY_CALL) focus_on(graph->unary_calls, g);
-    else MATCH (SYMBOL_BINARY_CALL, SYMBOL_CELL)
+    if (SYMBOL_APPLICATOR == fsym && SYMBOL_LAMBDA == gsym) {
+        focus_on(graph->betas, f);
+    } else if (SYMBOL_APPLICATOR == gsym && SYMBOL_LAMBDA == fsym) {
+        focus_on(graph->betas, g);
+    } else if (SYMBOL_UNARY_CALL == fsym && SYMBOL_CELL == gsym) {
+        focus_on(graph->unary_calls, f);
+    } else if (SYMBOL_CELL == fsym && SYMBOL_UNARY_CALL == gsym) {
+        focus_on(graph->unary_calls, g);
+    } else if (SYMBOL_BINARY_CALL == fsym && SYMBOL_CELL == gsym) {
         focus_on(graph->binary_calls, f);
-    else MATCH (SYMBOL_CELL, SYMBOL_BINARY_CALL)
+    } else if (SYMBOL_BINARY_CALL == gsym && SYMBOL_CELL == fsym) {
         focus_on(graph->binary_calls, g);
-    else MATCH (SYMBOL_BINARY_CALL_AUX, SYMBOL_CELL)
+    } else if (SYMBOL_BINARY_CALL_AUX == fsym && SYMBOL_CELL == gsym) {
         focus_on(graph->binary_calls_aux, f);
-    else MATCH (SYMBOL_CELL, SYMBOL_BINARY_CALL_AUX)
+    } else if (SYMBOL_BINARY_CALL_AUX == gsym && SYMBOL_CELL == fsym) {
         focus_on(graph->binary_calls_aux, g);
-    else if (f_symbol == g_symbol) focus_on(graph->annihilations, f);
-    else focus_on(graph->commutations, f);
-
-#undef MATCH
+    } else if (fsym == gsym) {
+        focus_on(graph->annihilations, f);
+    } else {
+        focus_on(graph->commutations, f);
+    }
 }
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 inline static void
 register_pair_if_active(
-    struct node_graph *const restrict graph,
+    struct context *const restrict graph,
     const struct node f,
     const struct node g) {
     assert(graph);
@@ -1273,7 +1298,7 @@ register_pair_if_active(
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 register_node_if_active(
-    struct node_graph *const restrict graph,
+    struct context *const restrict graph,
     const struct node node) {
     assert(graph);
     XASSERT(node.ports);
@@ -1418,9 +1443,7 @@ graphviz_edge_tailport(
     const bool is_reading_back) {
     XASSERT(node.ports);
 
-    const uint64_t symbol = node.ports[-1];
-
-    switch (symbol) {
+    switch (node.ports[-1]) {
     case SYMBOL_ROOT:
     case SYMBOL_S:
         switch (i) {
@@ -1454,8 +1477,8 @@ graphviz_edge_tailport(
         default: COMPILER_UNREACHABLE();
         }
     default:
-        if (symbol <= MAX_DUPLICATOR_INDEX) goto duplicator;
-        else if (symbol <= MAX_DELIMITER_INDEX) goto delimiter;
+        if (node.ports[-1] <= MAX_DUPLICATOR_INDEX) goto duplicator;
+        else if (node.ports[-1] <= MAX_DELIMITER_INDEX) goto delimiter;
         else COMPILER_UNREACHABLE();
     duplicator:
         switch (i) {
@@ -1811,7 +1834,7 @@ go_graphviz(
 COMPILER_NONNULL(1, 2) //
 static void
 graphviz(
-    const struct node_graph *const restrict graph,
+    const struct context *const restrict graph,
     const char filename[const restrict]) {
     debug("%s(\"%s\")", __func__, filename);
 
@@ -1851,7 +1874,7 @@ graphviz(
         postprocess_graphviz_footer();
         const long length = ftell(graphviz_footer_fp);
         rewind(graphviz_footer_fp);
-        redirect_stream(graphviz_footer_fp, fp);
+        optiscope_redirect_stream(graphviz_footer_fp, fp);
         fseek(graphviz_footer_fp, length, SEEK_SET);
     }
 #endif
@@ -1889,7 +1912,7 @@ graphviz(
 
 COMPILER_NONNULL(1) //
 static void
-wait_for_user(const struct node_graph *const restrict graph) {
+wait_for_user(const struct context *const restrict graph) {
     assert(graph);
 
 #ifdef OPTISCOPE_ENABLE_GRAPHVIZ
@@ -1915,67 +1938,91 @@ wait_for_user(const struct node_graph *const restrict graph) {
 // Mark & sweep garbage collection
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-COMPILER_NONNULL(1) COMPILER_COLD //
-static void
-collect_garbage(
-    const struct node_graph *const restrict graph,
-    const struct node node) {
+COMPILER_RETURNS_NONNULL COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1, 3)
+COMPILER_COLD //
+static struct multifocus *
+mark(
+    const struct context *const restrict graph,
+    const struct node node,
+    bool *const restrict root_found) {
     assert(graph);
-    XASSERT(node.ports);
     XASSERT(!graph->is_reading_back);
+    XASSERT(node.ports);
+    XASSERT(SYMBOL_ROOT != node.ports);
+    assert(root_found);
 
-    struct multifocus *const stack = xcalloc(1, sizeof *stack);
+    struct multifocus *const focus = xcalloc(1, sizeof *focus);
     struct multifocus *const history = xcalloc(1, sizeof *history);
 
-    focus_on(stack, node);
+    focus_on(focus, node);
 
     const uint64_t altered_phase = graph->current_phase + 1;
 
-    bool root_found = false;
-    CONSUME_MULTIFOCUS (stack, f) {
+    CONSUME_MULTIFOCUS (focus, f) {
         XASSERT(f.ports);
 
-        if (SYMBOL_ROOT == f.ports[-1]) {
-            root_found = true;
-            break;
+        if (DECODE_PHASE_METADATA(f.ports[0]) == altered_phase) { //
+            continue;
         }
-
-        if (DECODE_PHASE_METADATA(f.ports[0]) == altered_phase) { continue; }
         set_phase(&f.ports[0], altered_phase);
-
         focus_on(history, f);
 
-        switch (ports_count(f.ports[-1])) {
-        case 3:
-            focus_on(stack, follow_port(&f.ports[2])); //
-            COMPILER_FALLTHROUGH;
-        case 2:
-            focus_on(stack, follow_port(&f.ports[1])); //
-            COMPILER_FALLTHROUGH;
-        case 1:
-            focus_on(stack, follow_port(&f.ports[0])); //
-            break;
-        default: COMPILER_UNREACHABLE();
-        }
-    }
+        // clang-format off
+        if (SYMBOL_ROOT == f.ports[-1]) { *root_found = true; break; }
+        // clang-format on
 
-    if (root_found) {
-        // Recover the current phase of the modified nodes.
-        CONSUME_MULTIFOCUS (history, f) {
-            set_phase(&f.ports[0], graph->current_phase);
-        }
-    } else {
-        // Free the nodes not reachable from the root.
-        CONSUME_MULTIFOCUS (history, f) {
-            // Active nodes will be freed later before interacting.
-            free_node_if_non_active(f);
+        const uint8_t nports = ports_count(f.ports[-1]);
+        XASSERT(nports <= MAX_PORTS);
+
+        for (uint8_t i = 0; i < nports; i++) {
+            focus_on(focus, follow_port(&f.ports[i]));
         }
     }
 
     // Free all the allocated cells of the fallback list.
-    CONSUME_LIST (iter, stack->fallback) {}
+    CONSUME_LIST (iter, focus->fallback) {}
+    free(focus);
 
-    free(stack);
+    return history;
+}
+
+COMPILER_NONNULL(1, 2) COMPILER_COLD //
+static void
+sweep(
+    const struct context *const restrict graph,
+    struct multifocus *const restrict history,
+    const bool root_found) {
+    assert(graph);
+    XASSERT(!graph->is_reading_back);
+    assert(history);
+
+    if (root_found) {
+        // If the node is connected to the root, recover the current phase of
+        // all the modified nodes.
+        CONSUME_MULTIFOCUS (history, f) {
+            set_phase(&f.ports[0], graph->current_phase);
+        }
+    } else {
+        // Otherwise, free all the nodes not reachable from the root.
+        CONSUME_MULTIFOCUS (history, f) {
+            // Active nodes will be freed later before interacting.
+            free_node_if_not_active(f);
+        }
+    }
+}
+
+COMPILER_NONNULL(1) COMPILER_COLD //
+static void
+collect_garbage(
+    const struct context *const restrict graph,
+    const struct node node) {
+    assert(graph);
+    XASSERT(!graph->is_reading_back);
+    XASSERT(node.ports);
+
+    bool root_found = false;
+    struct multifocus *const history = mark(graph, node, &root_found);
+    sweep(graph, history, root_found);
     free(history);
 }
 
@@ -2003,7 +2050,7 @@ assert_annihilation(const struct node f, const struct node g) {
 
 static void
 assert_beta(
-    const struct node_graph *const restrict graph,
+    const struct context *const restrict graph,
     const struct node f,
     const struct node g) {
     assert(graph);
@@ -2023,7 +2070,7 @@ assert_commutation(const struct node f, const struct node g) {
 
 static void
 assert_unary_call(
-    const struct node_graph *const restrict graph,
+    const struct context *const restrict graph,
     const struct node f,
     const struct node g) {
     assert(graph);
@@ -2036,7 +2083,7 @@ assert_unary_call(
 
 static void
 assert_binary_call(
-    const struct node_graph *const restrict graph,
+    const struct context *const restrict graph,
     const struct node f,
     const struct node g) {
     assert(graph);
@@ -2049,7 +2096,7 @@ assert_binary_call(
 
 static void
 assert_binary_call_aux(
-    const struct node_graph *const restrict graph,
+    const struct context *const restrict graph,
     const struct node f,
     const struct node g) {
     assert(graph);
@@ -2077,7 +2124,7 @@ COMPILER_NONNULL(1, 2) //
 static void
 debug_interaction(
     const char caller[const restrict],
-    const struct node_graph *const restrict graph,
+    const struct context *const restrict graph,
     const struct node f,
     const struct node g) {
     assert(caller);
@@ -2102,33 +2149,10 @@ debug_interaction(
 
 #endif // OPTISCOPE_ENABLE_TRACING
 
-COMPILER_HOT //
-static void
-transfer_node_data(const struct node source, const struct node destination) {
-    XASSERT(source.ports), XASSERT(destination.ports);
-
-    switch (source.ports[-1]) {
-    case SYMBOL_CELL:
-        destination.ports[1] = source.ports[1]; //
-        break;
-    case SYMBOL_UNARY_CALL:
-        destination.ports[2] = source.ports[2]; //
-        break;
-    case SYMBOL_BINARY_CALL:
-        destination.ports[3] = source.ports[3]; //
-        break;
-    case SYMBOL_BINARY_CALL_AUX:
-        destination.ports[2] = source.ports[2];
-        destination.ports[3] = source.ports[3];
-        break;
-    default: break;
-    }
-}
-
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 rewire_vertically(
-    struct node_graph *const restrict graph,
+    struct context *const restrict graph,
     const struct node f,
     const struct node g,
     const uint8_t i) {
@@ -2146,27 +2170,26 @@ rewire_vertically(
     register_pair_if_active(graph, fx, gx);
 }
 
-COMPILER_NONNULL(1) COMPILER_HOT //
+COMPILER_NONNULL(1, 3) COMPILER_HOT //
 static void
 protrude_node(
-    struct node_graph *const restrict graph,
+    struct context *const restrict graph,
     const struct node f,
-    const uint64_t port) {
+    uint64_t *const restrict port) {
     assert(graph);
     XASSERT(f.ports);
+    assert(port);
 
-    uint64_t *const target_port = DECODE_ADDRESS(port);
+    connect_ports(&f.ports[0], port);
 
-    connect_ports(&f.ports[0], target_port);
-
-    if (IS_PRINCIPAL_PORT(*target_port)) {
-        register_active_pair(graph, f, (struct node){target_port});
+    if (IS_PRINCIPAL_PORT(*port)) {
+        register_active_pair(graph, f, (struct node){port});
     }
 }
 
 // clang-format off
 typedef void (*Rule)
-    (struct node_graph *const restrict graph, struct node f, struct node g);
+    (struct context *const restrict graph, struct node f, struct node g);
 // clang-format on
 
 #define TYPE_CHECK_RULE(name)                                                  \
@@ -2176,8 +2199,9 @@ COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 annihilate(
     // clang-format off
-    struct node_graph *const restrict graph, const struct node f, const struct node g) {
+    struct context *const restrict graph, const struct node f, const struct node g) {
     // clang-format on
+    XASSERT(f.ports), XASSERT(g.ports);
     assert_annihilation(f, g);
     debug_interaction(__func__, graph, f, g);
 
@@ -2185,24 +2209,21 @@ annihilate(
     graph->nannihilations++;
 #endif
 
-    // clang-format off
     const uint64_t n = ports_count(f.ports[-1]) - 1;
-    switch (n) {
-#define CASE(i) \
-    case (i): rewire_vertically(graph, f, g, (i)); COMPILER_FALLTHROUGH
-        CASE(2); CASE(1);
-#undef CASE
-    case 0: break;
-    default: COMPILER_UNREACHABLE();
+    XASSERT(n <= MAX_AUXILIARY_PORTS);
+
+    for (uint8_t i = 1; i <= n; i++) {
+        // Respective ports must have the same semantic meaning.
+        rewire_vertically(graph, f, g, i);
     }
-    // clang-format on
 }
 
 TYPE_CHECK_RULE(annihilate);
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
-commute(struct node_graph *const restrict graph, struct node f, struct node g) {
+commute(struct context *const restrict graph, struct node f, struct node g) {
+    XASSERT(f.ports), XASSERT(g.ports);
     assert_commutation(f, g);
 
 prologue:;
@@ -2245,9 +2266,9 @@ prologue:;
     const bool update_symbol = (SYMBOL_LAMBDA == g.ports[-1] && i >= 0) ||
                                (IS_DELIMITER(g.ports[-1]) && i >= j);
 
-    const uint64_t f_symbol =
+    const uint64_t fsym =
                        (update_symbol ? bump_index(f.ports[-1]) : f.ports[-1]),
-                   g_symbol = g.ports[-1];
+                   gsym = g.ports[-1];
 
     const uint8_t n = ports_count(f.ports[-1]) - 1,
                   m = ports_count(g.ports[-1]) - 1;
@@ -2255,43 +2276,24 @@ prologue:;
     struct node f_updates[MAX_AUXILIARY_PORTS] = {{NULL}},
                 g_updates[MAX_AUXILIARY_PORTS] = {{NULL}};
 
-    // Connect the new nodes with the old ones, & register the new active nodes
-    // for future interaction...
+    // Hint the compiler to automatically unroll the following loops.
+    XASSERT(m <= MAX_AUXILIARY_PORTS), XASSERT(n <= MAX_AUXILIARY_PORTS);
 
-    switch (m) {
-    case 2:
-        f_updates[1] = alloc_node(graph, f_symbol);
-        transfer_node_data(f, f_updates[1]);
-        protrude_node(graph, f_updates[1], g.ports[1]);
-        COMPILER_FALLTHROUGH;
-    case 1:
-        f_updates[0] = alloc_node(graph, f_symbol);
-        transfer_node_data(f, f_updates[0]);
-        protrude_node(graph, f_updates[0], g.ports[m]);
-        break;
-    case 0: break;
-    default: COMPILER_UNREACHABLE();
+    for (uint8_t i = 0; i < m; i++) {
+        f_updates[i] = alloc_node_from(graph, fsym, &f);
+        // clang-format off
+        protrude_node(graph,
+            f_updates[i], DECODE_ADDRESS(g.ports[m - i]));
+        // clang-format on
+    }
+    for (uint8_t i = 0; i < n; i++) {
+        g_updates[i] = alloc_node_from(graph, gsym, &g);
+        // clang-format off
+        protrude_node(graph,
+            g_updates[i], DECODE_ADDRESS(f.ports[i + 1]));
+        // clang-format on
     }
 
-    switch (n) {
-    case 2:
-        g_updates[1] = alloc_node(graph, g_symbol);
-        transfer_node_data(g, g_updates[1]);
-        protrude_node(graph, g_updates[1], f.ports[2]);
-        COMPILER_FALLTHROUGH;
-    case 1:
-        g_updates[0] = alloc_node(graph, g_symbol);
-        transfer_node_data(g, g_updates[0]);
-        protrude_node(graph, g_updates[0], f.ports[1]);
-        break;
-    case 0: break;
-    default: COMPILER_UNREACHABLE();
-    }
-
-    // Hint the compiler to automatically unroll the following loop.
-    XASSERT(m <= 2), XASSERT(n <= 2);
-
-    // Connect the new nodes among themselves.
     for (uint8_t i = 0; i < m; i++) {
         for (uint8_t j = 0; j < n; j++) {
             connect_ports(
@@ -2308,8 +2310,9 @@ COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 beta(
     // clang-format off
-    struct node_graph *const restrict graph, const struct node f, const struct node g) {
+    struct context *const restrict graph, const struct node f, const struct node g) {
     // clang-format on
+    XASSERT(f.ports), XASSERT(g.ports);
     assert_beta(graph, f, g);
     debug_interaction(__func__, graph, f, g);
 
@@ -2354,8 +2357,9 @@ COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 do_unary_call(
     // clang-format off
-    struct node_graph *const restrict graph, const struct node f, const struct node g) {
+    struct context *const restrict graph, const struct node f, const struct node g) {
     // clang-format on
+    XASSERT(f.ports), XASSERT(g.ports);
     assert_unary_call(graph, f, g);
     debug_interaction(__func__, graph, f, g);
 
@@ -2368,7 +2372,7 @@ do_unary_call(
 #pragma GCC diagnostic ignored "-Wpedantic"
     cell.ports[1] = (UNARY_FUNCTION_OF_U64(f.ports[2]))(g.ports[1]);
 #pragma GCC diagnostic pop
-    protrude_node(graph, cell, f.ports[1]);
+    protrude_node(graph, cell, DECODE_ADDRESS(f.ports[1]));
 }
 
 TYPE_CHECK_RULE(do_unary_call);
@@ -2377,8 +2381,9 @@ COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 do_binary_call(
     // clang-format off
-    struct node_graph *const restrict graph, const struct node f, const struct node g) {
+    struct context *const restrict graph, const struct node f, const struct node g) {
     // clang-format on
+    XASSERT(f.ports), XASSERT(g.ports);
     assert_binary_call(graph, f, g);
     debug_interaction(__func__, graph, f, g);
 
@@ -2390,7 +2395,7 @@ do_binary_call(
     connect_ports(&aux.ports[1], DECODE_ADDRESS(f.ports[1]));
     aux.ports[2] = f.ports[3];
     aux.ports[3] = g.ports[1];
-    protrude_node(graph, aux, f.ports[2]);
+    protrude_node(graph, aux, DECODE_ADDRESS(f.ports[2]));
 }
 
 TYPE_CHECK_RULE(do_binary_call);
@@ -2399,8 +2404,9 @@ COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 do_binary_call_aux(
     // clang-format off
-    struct node_graph *const restrict graph, const struct node f, const struct node g) {
+    struct context *const restrict graph, const struct node f, const struct node g) {
     // clang-format on
+    XASSERT(f.ports), XASSERT(g.ports);
     assert_binary_call_aux(graph, f, g);
     debug_interaction(__func__, graph, f, g);
 
@@ -2414,7 +2420,7 @@ do_binary_call_aux(
     cell.ports[1] =
         (BINARY_FUNCTION_OF_U64(f.ports[2]))(f.ports[3], g.ports[1]);
 #pragma GCC diagnostic pop
-    protrude_node(graph, cell, f.ports[1]);
+    protrude_node(graph, cell, DECODE_ADDRESS(f.ports[1]));
 }
 
 TYPE_CHECK_RULE(do_binary_call_aux);
@@ -2424,7 +2430,7 @@ TYPE_CHECK_RULE(do_binary_call_aux);
 COMPILER_NONNULL(1, 2) COMPILER_HOT //
 static void
 interact(
-    struct node_graph *const restrict graph,
+    struct context *const restrict graph,
     const Rule rule,
     const struct node f) {
     assert(graph);
@@ -2455,16 +2461,16 @@ cleanup:
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 static struct node_list *
-iterate_nodes(const struct node_graph *graph, const struct symbol_range range) {
+iterate_nodes(const struct context *graph, const struct symbol_range range) {
     assert(graph);
     XASSERT(graph->root.ports);
 
-    struct multifocus *stack = xcalloc(1, sizeof *stack);
+    struct multifocus *focus = xcalloc(1, sizeof *focus);
     struct node_list *collection = NULL;
 
-    focus_on(stack, graph->root);
+    focus_on(focus, graph->root);
 
-    CONSUME_MULTIFOCUS (stack, node) {
+    CONSUME_MULTIFOCUS (focus, node) {
         XASSERT(node.ports);
 
         if (DECODE_PHASE_METADATA(node.ports[0]) == graph->current_phase) {
@@ -2478,19 +2484,19 @@ iterate_nodes(const struct node_graph *graph, const struct symbol_range range) {
 
         switch (ports_count(node.ports[-1])) {
         case 3:
-            focus_on(stack, follow_port(&node.ports[2]));
+            focus_on(focus, follow_port(&node.ports[2]));
             COMPILER_FALLTHROUGH;
         case 2:
-            focus_on(stack, follow_port(&node.ports[1]));
+            focus_on(focus, follow_port(&node.ports[1]));
             COMPILER_FALLTHROUGH;
         case 1:
-            focus_on(stack, follow_port(&node.ports[0])); //
+            focus_on(focus, follow_port(&node.ports[0])); //
             break;
         default: COMPILER_UNREACHABLE();
         }
     }
 
-    free(stack);
+    free(focus);
 
     return collection;
 }
@@ -2503,7 +2509,7 @@ iterate_nodes(const struct node_graph *graph, const struct symbol_range range) {
 
 COMPILER_NONNULL(1) //
 static void
-unwind(struct node_graph *const restrict graph) {
+unwind(struct context *const restrict graph) {
     assert(graph);
     assert(is_normalized_graph(graph));
 
@@ -2528,7 +2534,7 @@ unwind(struct node_graph *const restrict graph) {
 COMPILER_NONNULL(1) //
 static void
 register_active_scopes(
-    struct node_graph *const restrict graph,
+    struct context *const restrict graph,
     struct node_list *new_scopes) {
     assert(graph);
 
@@ -2545,7 +2551,7 @@ register_active_scopes(
 
 COMPILER_NONNULL(1) //
 static void
-scope_remove(struct node_graph *const restrict graph) {
+scope_remove(struct context *const restrict graph) {
     assert(graph);
     assert(is_normalized_graph(graph));
 
@@ -2572,7 +2578,7 @@ scope_remove(struct node_graph *const restrict graph) {
 
 COMPILER_NONNULL(1) //
 static void
-loop_cut(struct node_graph *const restrict graph) {
+loop_cut(struct context *const restrict graph) {
     assert(graph);
     assert(is_normalized_graph(graph));
 
@@ -2837,7 +2843,7 @@ count_binder_usage(
 COMPILER_RETURNS_NONNULL COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1, 2) //
 static uint64_t *
 build_delimiter_sequence(
-    struct node_graph *const restrict graph,
+    struct context *const restrict graph,
     uint64_t *const restrict binder_port,
     const uint64_t n) {
     assert(graph);
@@ -2861,7 +2867,7 @@ build_delimiter_sequence(
 COMPILER_RETURNS_NONNULL COMPILER_NONNULL(1, 2) COMPILER_WARN_UNUSED_RESULT //
 static uint64_t **
 build_duplicator_tree(
-    struct node_graph *const restrict graph,
+    struct context *const restrict graph,
     uint64_t *const restrict binder_port,
     const uint64_t n) {
     assert(graph);
@@ -2898,7 +2904,7 @@ de_bruijn_level_to_index(const uint64_t lvl, const uint64_t var) {
 COMPILER_NONNULL(1, 2, 3) //
 static void
 go_of_lambda_term(
-    struct node_graph *const restrict graph,
+    struct context *const restrict graph,
     struct lambda_term *const restrict term,
     uint64_t *const restrict output_port,
     const uint64_t lvl) {
@@ -2937,14 +2943,13 @@ go_of_lambda_term(
             const struct node eraser = alloc_node(graph, SYMBOL_ERASER);
             connect_ports(&lambda.ports[1], &eraser.ports[0]);
         } else {
-            dup_ports = build_duplicator_tree(
-                graph, &lambda.ports[1], nvars /* nvars >= 1 */);
+            dup_ports = build_duplicator_tree(graph, &lambda.ports[1], nvars);
         }
         tlambda->dup_ports = dup_ports;
         tlambda->lvl = lvl;
         go_of_lambda_term(graph, body, &lambda.ports[2], lvl + 1);
         connect_ports(&lambda.ports[0], output_port);
-        if (dup_ports) { free(dup_ports); }
+        free(dup_ports);
 
         break;
     }
@@ -3022,7 +3027,7 @@ go_of_lambda_term(
 }
 
 COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) //
-static struct node_graph
+static struct context
 of_lambda_term(struct lambda_term *const restrict term) {
     assert(term);
 
@@ -3033,7 +3038,7 @@ of_lambda_term(struct lambda_term *const restrict term) {
     // never interact with "real" nodes.
     connect_ports(&root.ports[0], &eraser.ports[0]);
 
-    struct node_graph graph = {
+    struct context graph = {
         .root = root,
         .annihilations = xcalloc(1, sizeof *graph.annihilations),
         .commutations = xcalloc(1, sizeof *graph.commutations),
@@ -3066,7 +3071,7 @@ of_lambda_term(struct lambda_term *const restrict term) {
 
 COMPILER_NONNULL(1) //
 static void
-normalize_x_rules(struct node_graph *const restrict graph) {
+normalize_x_rules(struct context *const restrict graph) {
     debug("%s()", __func__);
 
     assert(graph);
@@ -3111,7 +3116,7 @@ optiscope_algorithm(
 
     assert(term);
 
-    struct node_graph graph = of_lambda_term(term);
+    struct context graph = of_lambda_term(term);
 
     // Initiall normalization.
     {
@@ -3124,11 +3129,11 @@ optiscope_algorithm(
     printf("Annihilation interactions: %" PRIu64 "\n", graph.nannihilations);
     printf("Commutation interactions: %" PRIu64 "\n", graph.ncommutations);
     printf("Beta interactions: %" PRIu64 "\n", graph.nbetas);
-    printf("Native function calls: %" PRIu64 "\n", graph.ninvocations);
+    printf("Native function calls: %" PRIu64 "\n", graph.ncalls);
     printf(
         "Total interactions: %" PRIu64 "\n",
         graph.nannihilations + graph.ncommutations + graph.nbetas +
-            graph.ninvocations);
+            graph.ncalls);
 #endif
 
     if (NULL == stream) { goto cleanup; }

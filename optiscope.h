@@ -81,6 +81,10 @@ are not compatible with `NDEBUG`!
 #error You are not eligible for Graphviz visualization.
 #endif
 
+#ifdef __GNUC__
+#define _DEFAULT_SOURCE
+#endif
+
 #include <stdint.h>
 #include <stdio.h>
 
