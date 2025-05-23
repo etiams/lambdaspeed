@@ -798,6 +798,45 @@ conditionals(void) {
         cell(10));
 }
 
+// clang-format off
+static uint64_t is_zero(const uint64_t x) { return 0 == x; }
+
+static uint64_t is_one(const uint64_t x) { return 1 == x; }
+// clang-format on
+
+static struct lambda_term *
+fast_y_fibonacci_function(void) {
+    struct lambda_term *f, *n;
+
+    // clang-format off
+    return lambda(
+        f,
+        lambda(
+            n,
+            if_then_else(
+                unary_call(is_zero, var(n)),
+                cell(0),
+                if_then_else(
+                    unary_call(is_one, var(n)),
+                    cell(1),
+                    binary_call(add,
+                        applicator(var(f),
+                            binary_call(subtract, var(n), cell(1))),
+                        applicator(var(f),
+                            binary_call(subtract, var(n), cell(2))))))));
+    // clang-format on
+}
+
+static struct lambda_term *
+fast_y_fibonacci_term(void) {
+    return applicator(y_combinator(), fast_y_fibonacci_function());
+}
+
+static struct lambda_term *
+fast_y_fibonacci_test(void) {
+    return applicator(fast_y_fibonacci_term(), cell(3));
+}
+
 // Examples from the literature
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -920,6 +959,7 @@ main(void) {
     TEST_CASE(unary_arithmetic, "cell[2048]");
     TEST_CASE(binary_arithmetic, "cell[11]");
     TEST_CASE(conditionals, "cell[10]");
+    TEST_CASE(fast_y_fibonacci_test, "xxx");
     TEST_CASE(lamping_example, "(λ 0)");
     TEST_CASE(lamping_example_2, "(λ 0)");
     TEST_CASE(asperti_guerrini_example, "(λ (0 0))");
