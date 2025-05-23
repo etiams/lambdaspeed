@@ -460,14 +460,14 @@ connect_port_to(
     assert(port);
     assert(another);
     XASSERT(port != another);
-    XASSERT(DECODE_ADDRESS(*port) != another);
+    assert(DECODE_ADDRESS(*port) != another);
 
     const uint64_t port_metadata = DECODE_ADDRESS_METADATA(*port);
 
     *port = ENCODE_ADDRESS(port_metadata, (uint64_t)another);
 
-    XASSERT(DECODE_ADDRESS(*port) == another);
-    XASSERT(DECODE_ADDRESS_METADATA(*port) == port_metadata);
+    assert(DECODE_ADDRESS(*port) == another);
+    assert(DECODE_ADDRESS_METADATA(*port) == port_metadata);
 }
 
 COMPILER_NONNULL(1, 2) COMPILER_HOT COMPILER_FLATTEN //
@@ -2527,8 +2527,12 @@ interact(
     assert(rule);
     XASSERT(f.ports);
 
+    if (is_garbage_node(&f.ports[0])) { return; }
+
     const struct node g = follow_port(&f.ports[0]);
     XASSERT(g.ports);
+
+    if (is_garbage_node(&g.ports[0])) { return; }
 
     if (DECODE_PHASE_METADATA(f.ports[0]) == graph->current_phase + 1) {
         // This active node was previously marked as garbage.
