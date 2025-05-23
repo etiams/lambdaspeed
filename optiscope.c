@@ -450,7 +450,7 @@ get_principal_port(uint64_t *const restrict port) {
 }
 
 COMPILER_NONNULL(1, 2) COMPILER_HOT //
-static void
+inline static void
 connect_port_to(
     uint64_t *const restrict port,
     const uint64_t *const restrict another) {
@@ -468,7 +468,7 @@ connect_port_to(
 }
 
 COMPILER_NONNULL(1, 2) COMPILER_HOT COMPILER_FLATTEN //
-static void
+inline static void
 connect_ports(uint64_t *const restrict lhs, uint64_t *const restrict rhs) {
     debug("%s(%p, %p)", __func__, (void *)lhs, (void *)rhs);
 
