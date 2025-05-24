@@ -2513,9 +2513,7 @@ connect_branch(
 
     connect_ports(&eraser.ports[0], other);
 
-    if (!is_garbage_node(&eraser.ports[0])) { //
-        collect_garbage(graph, eraser);
-    }
+    collect_garbage(graph, eraser);
 }
 
 COMPILER_NONNULL(1) COMPILER_HOT //
@@ -2555,6 +2553,8 @@ interact(
     assert(graph);
     assert(rule);
     XASSERT(f.ports);
+
+    if (is_garbage_node(&f.ports[0])) { return; }
 
     const struct node g = follow_port(&f.ports[0]);
     XASSERT(g.ports);
