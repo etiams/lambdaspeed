@@ -558,11 +558,11 @@ bump_index(const uint64_t symbol) {
     }
 }
 
-#define PHASE_INITIAL      UINT64_C(0)
-#define PHASE_UNWIND       UINT64_C(1)
-#define PHASE_SCOPE_REMOVE UINT64_C(2)
-#define PHASE_LOOP_CUT     UINT64_C(3)
-#define PHASE_GARBAGE      UINT64_C(4)
+#define PHASE_FULL_REDUCTION UINT64_C(0)
+#define PHASE_UNWIND         UINT64_C(1)
+#define PHASE_SCOPE_REMOVE   UINT64_C(2)
+#define PHASE_LOOP_CUT       UINT64_C(3)
+#define PHASE_GARBAGE        UINT64_C(4)
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 inline static void
@@ -967,7 +967,7 @@ free_node_if_not_active(const struct node f) {
     free_node(f);
 }
 
-// A linked list of nodes
+// Linked lists functionalitie
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 struct node_list {
@@ -1039,7 +1039,7 @@ is_visited(
 
 #endif // OPTISCOPE_ENABLE_GRAPHVIZ
 
-// Graphs (nets) of nodes
+// Multifocuses functionalitie
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 #ifndef OPTISCOPE_MULTIFOCUS_COUNT
@@ -1086,60 +1086,102 @@ unfocus(struct multifocus *const restrict focus) {
          (focus)->count > 0 ? (f = unfocus(focus), true) : false;              \
          (void)0)
 
+// The main context functionalitie
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+// clang-format off
+#define CONTEXT_MULTIFOCUSES \
+    X(betas) X(annihilations) X(commutations) \
+    X(unary_calls) X(binary_calls) X(binary_calls_aux) \
+    X(if_then_elses)
+// clang-format on
+
 struct context {
-    const struct node root;
-    struct multifocus *annihilations, *commutations, *betas, //
-        *unary_calls, *binary_calls, *binary_calls_aux, *if_then_elses;
-    uint64_t current_phase;
-    bool is_reading_back;
+    struct node root;
+    uint64_t phase;
+
+#define X(focus_name) struct multifocus *focus_name;
+    CONTEXT_MULTIFOCUSES
+#undef X
 
 #ifdef OPTISCOPE_ENABLE_STATS
-    uint64_t nannihilations, ncommutations, nbetas, //
-        ncalls, nif_then_elses;
+#define X(focus_name) uint64_t n##focus_name;
+    CONTEXT_MULTIFOCUSES
+#undef X
 #endif
 };
+
+COMPILER_NONNULL(1) COMPILER_COLD //
+static void
+free_context(struct context *const restrict graph);
+
+// clang-format off
+COMPILER_MALLOC(free_context, 1) COMPILER_RETURNS_NONNULL
+COMPILER_WARN_UNUSED_RESULT COMPILER_COLD
+// clang-format on
+static struct context *alloc_context(void) {
+    const struct node root = //
+        xmalloc_node(SYMBOL_ROOT, PHASE_FULL_REDUCTION);
+    const struct node eraser =
+        xmalloc_node(SYMBOL_ERASER, PHASE_FULL_REDUCTION);
+
+    // Since the principle root port is connected to the eraser, the root will
+    // never interact with "real" nodes.
+    connect_ports(&root.ports[0], &eraser.ports[0]);
+
+    struct context *graph = xmalloc(sizeof *graph);
+    graph->root = root;
+    graph->phase = PHASE_FULL_REDUCTION;
+
+    // clang-format off
+#define X(focus_name) \
+    graph->focus_name = xcalloc(1, sizeof *graph->focus_name);
+    // clang-format on
+    CONTEXT_MULTIFOCUSES
+#undef X
+
+#ifdef OPTISCOPE_ENABLE_STATS
+#define X(focus_name) graph->n##focus_name = 0;
+    CONTEXT_MULTIFOCUSES
+#undef X
+#endif
+
+    return graph;
+}
+
+COMPILER_NONNULL(1) COMPILER_COLD //
+static void
+free_context(struct context *const restrict graph) {
+    debug("%s()", __func__);
+
+    assert(graph);
+    XASSERT(graph->root.ports);
+
+    free(DECODE_ADDRESS(graph->root.ports[0]) - 1 /* back to the symbol */);
+    free(graph->root.ports - 1 /* back to the symbol */);
+
+    // clang-format off
+#define X(focus_name) \
+    { \
+        XASSERT(graph->focus_name); \
+        XASSERT(0 == graph->focus_name->count); \
+        free(graph->focus_name); \
+    }
+    // clang-format on
+    CONTEXT_MULTIFOCUSES
+#undef X
+
+    free(graph);
+}
 
 COMPILER_PURE COMPILER_NONNULL(1) COMPILER_HOT //
 inline static bool
 is_normalized_graph(const struct context *const restrict graph) {
     assert(graph);
 
-    return 0 == graph->betas->count &&            //
-           0 == graph->annihilations->count &&    //
-           0 == graph->commutations->count &&     //
-           0 == graph->unary_calls->count &&      //
-           0 == graph->binary_calls->count &&     //
-           0 == graph->binary_calls_aux->count && //
-           0 == graph->if_then_elses->count;
-}
-
-COMPILER_NONNULL(1) COMPILER_COLD //
-static void
-free_graph(struct context *const restrict graph) {
-    debug("%s()", __func__);
-
-    assert(graph);
-    XASSERT(graph->root.ports);
-    XASSERT(graph->annihilations), XASSERT(0 == graph->annihilations->count);
-    XASSERT(graph->commutations), XASSERT(0 == graph->commutations->count);
-    XASSERT(graph->betas), XASSERT(0 == graph->betas->count);
-    XASSERT(graph->unary_calls), XASSERT(0 == graph->unary_calls->count);
-    XASSERT(graph->binary_calls), XASSERT(0 == graph->binary_calls->count);
-    XASSERT(graph->binary_calls_aux),
-        XASSERT(0 == graph->binary_calls_aux->count);
-    XASSERT(graph->if_then_elses), XASSERT(0 == graph->if_then_elses->count);
-    XASSERT(!graph->is_reading_back);
-
-    free(DECODE_ADDRESS(graph->root.ports[0]) - 1 /* back to the symbol */);
-    free(graph->root.ports - 1 /* back to the symbol */);
-
-    free(graph->annihilations);
-    free(graph->commutations);
-    free(graph->betas);
-    free(graph->unary_calls);
-    free(graph->binary_calls);
-    free(graph->binary_calls_aux);
-    free(graph->if_then_elses);
+#define X(focus_name) (0 == graph->focus_name->count) &&
+    return CONTEXT_MULTIFOCUSES true;
+#undef X
 }
 
 COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) COMPILER_HOT //
@@ -1212,7 +1254,7 @@ set_ports_2:
 set_ports_1:
     ports[1] = PORT_VALUE(UINT64_C(1), UINT64_C(0), UINT64_C(0));
 set_ports_0:
-    ports[0] = PORT_VALUE(UINT64_C(0), graph->current_phase, UINT64_C(0));
+    ports[0] = PORT_VALUE(UINT64_C(0), graph->phase, UINT64_C(0));
 
     ports[-1] = symbol;
 
@@ -2003,7 +2045,7 @@ mark(
     const struct node node,
     bool *const restrict root_found) {
     assert(graph);
-    XASSERT(!graph->is_reading_back);
+    XASSERT(graph->phase < PHASE_UNWIND);
     XASSERT(node.ports);
     XASSERT(SYMBOL_ROOT != node.ports);
     assert(root_found);
@@ -2048,14 +2090,14 @@ sweep(
     struct multifocus *const restrict history,
     const bool root_found) {
     assert(graph);
-    XASSERT(!graph->is_reading_back);
+    XASSERT(graph->phase < PHASE_UNWIND);
     assert(history);
 
     if (root_found) {
         // If the node is connected to the root, recover the current phase of
         // all the modified nodes.
         CONSUME_MULTIFOCUS (history, f) {
-            set_phase(&f.ports[0], graph->current_phase);
+            set_phase(&f.ports[0], graph->phase);
         }
     } else {
         // Otherwise, free all the nodes not reachable from the root.
@@ -2072,7 +2114,7 @@ collect_garbage(
     const struct context *const restrict graph,
     const struct node node) {
     assert(graph);
-    XASSERT(!graph->is_reading_back);
+    XASSERT(graph->phase < PHASE_UNWIND);
     XASSERT(node.ports);
 
     bool root_found = false;
@@ -2109,7 +2151,7 @@ assert_beta(
     const struct node f,
     const struct node g) {
     assert(graph);
-    assert(!graph->is_reading_back);
+    assert(graph->phase < PHASE_UNWIND);
     assert(f.ports), assert(g.ports);
     assert(is_interaction(f, g));
     assert(is_beta(f, g));
@@ -2129,7 +2171,7 @@ assert_unary_call(
     const struct node f,
     const struct node g) {
     assert(graph);
-    assert(!graph->is_reading_back);
+    assert(graph->phase < PHASE_UNWIND);
     assert(f.ports), assert(g.ports);
     assert(is_interaction(f, g));
     assert(SYMBOL_UNARY_CALL == f.ports[-1]);
@@ -2142,7 +2184,7 @@ assert_binary_call(
     const struct node f,
     const struct node g) {
     assert(graph);
-    assert(!graph->is_reading_back);
+    assert(graph->phase < PHASE_UNWIND);
     assert(f.ports), assert(g.ports);
     assert(is_interaction(f, g));
     assert(SYMBOL_BINARY_CALL == f.ports[-1]);
@@ -2155,7 +2197,7 @@ assert_binary_call_aux(
     const struct node f,
     const struct node g) {
     assert(graph);
-    assert(!graph->is_reading_back);
+    assert(graph->phase < PHASE_UNWIND);
     assert(f.ports), assert(g.ports);
     assert(is_interaction(f, g));
     assert(SYMBOL_BINARY_CALL_AUX == f.ports[-1]);
@@ -2168,7 +2210,7 @@ assert_if_then_else(
     const struct node f,
     const struct node g) {
     assert(graph);
-    assert(!graph->is_reading_back);
+    assert(graph->phase < PHASE_UNWIND);
     assert(f.ports), assert(g.ports);
     assert(is_interaction(f, g));
     assert(SYMBOL_IF_THEN_ELSE == f.ports[-1]);
@@ -2587,10 +2629,8 @@ iterate_nodes(const struct context *graph, const struct symbol_range range) {
     CONSUME_MULTIFOCUS (focus, node) {
         XASSERT(node.ports);
 
-        if (DECODE_PHASE_METADATA(node.ports[0]) == graph->current_phase) {
-            continue;
-        }
-        set_phase(&node.ports[0], graph->current_phase);
+        if (DECODE_PHASE_METADATA(node.ports[0]) == graph->phase) { continue; }
+        set_phase(&node.ports[0], graph->phase);
 
         if (symbol_is_in_range(range, node.ports[-1])) {
             collection = visit(collection, node);
@@ -2622,7 +2662,7 @@ unwind(struct context *const restrict graph) {
     assert(graph);
     assert(is_normalized_graph(graph));
 
-    graph->current_phase = PHASE_UNWIND;
+    graph->phase = PHASE_UNWIND;
 
     CONSUME_LIST (
         iter, iterate_nodes(graph, SYMBOL_RANGE_1(SYMBOL_APPLICATOR))) {
@@ -2664,7 +2704,7 @@ scope_remove(struct context *const restrict graph) {
     assert(graph);
     assert(is_normalized_graph(graph));
 
-    graph->current_phase = PHASE_SCOPE_REMOVE;
+    graph->phase = PHASE_SCOPE_REMOVE;
 
     struct node_list *new_scopes = NULL;
     CONSUME_LIST (iter, iterate_nodes(graph, DELIMITER_RANGE)) {
@@ -2691,7 +2731,7 @@ loop_cut(struct context *const restrict graph) {
     assert(graph);
     assert(is_normalized_graph(graph));
 
-    graph->current_phase = PHASE_LOOP_CUT;
+    graph->phase = PHASE_LOOP_CUT;
 
     CONSUME_LIST (iter, iterate_nodes(graph, SYMBOL_RANGE_1(SYMBOL_LAMBDA))) {
         const struct node node = iter->node;
@@ -3047,7 +3087,7 @@ de_bruijn_level_to_index(const uint64_t lvl, const uint64_t var) {
 
 COMPILER_NONNULL(1, 2, 3) //
 static void
-go_of_lambda_term(
+of_lambda_term(
     struct context *const restrict graph,
     struct lambda_term *const restrict term,
     uint64_t *const restrict output_port,
@@ -3064,8 +3104,8 @@ go_of_lambda_term(
 
         const struct node applicator = alloc_node(graph, SYMBOL_APPLICATOR);
         connect_ports(&applicator.ports[1], output_port);
-        go_of_lambda_term(graph, rator, &applicator.ports[0], lvl);
-        go_of_lambda_term(graph, rand, &applicator.ports[2], lvl);
+        of_lambda_term(graph, rator, &applicator.ports[0], lvl);
+        of_lambda_term(graph, rand, &applicator.ports[2], lvl);
 
         const struct node lambda = follow_port(&applicator.ports[0]);
         if (is_beta(applicator, lambda)) {
@@ -3092,7 +3132,7 @@ go_of_lambda_term(
         }
         tlambda->dup_ports = dup_ports;
         tlambda->lvl = lvl;
-        go_of_lambda_term(graph, body, &lambda.ports[2], lvl + 1);
+        of_lambda_term(graph, body, &lambda.ports[2], lvl + 1);
 
         free(dup_ports);
 
@@ -3135,7 +3175,7 @@ go_of_lambda_term(
 #pragma GCC diagnostic ignored "-Wpedantic"
         call.ports[2] = U64_OF_FUNCTION(function);
 #pragma GCC diagnostic pop
-        go_of_lambda_term(graph, rand, &call.ports[0], lvl);
+        of_lambda_term(graph, rand, &call.ports[0], lvl);
 
         register_node_if_active(
             graph, call); // either a ready call or commutation
@@ -3156,8 +3196,8 @@ go_of_lambda_term(
 #pragma GCC diagnostic ignored "-Wpedantic"
         call.ports[3] = U64_OF_FUNCTION(function);
 #pragma GCC diagnostic pop
-        go_of_lambda_term(graph, lhs, &call.ports[0], lvl);
-        go_of_lambda_term(graph, rhs, &call.ports[2], lvl);
+        of_lambda_term(graph, lhs, &call.ports[0], lvl);
+        of_lambda_term(graph, rhs, &call.ports[2], lvl);
 
         register_node_if_active(
             graph, call); // either a ready call or commutation
@@ -3173,9 +3213,9 @@ go_of_lambda_term(
 
         const struct node ite = alloc_node(graph, SYMBOL_IF_THEN_ELSE);
         connect_ports(&ite.ports[1], output_port);
-        go_of_lambda_term(graph, condition, &ite.ports[0], lvl);
-        go_of_lambda_term(graph, if_then, &ite.ports[3], lvl);
-        go_of_lambda_term(graph, if_else, &ite.ports[2], lvl);
+        of_lambda_term(graph, condition, &ite.ports[0], lvl);
+        of_lambda_term(graph, if_then, &ite.ports[3], lvl);
+        of_lambda_term(graph, if_else, &ite.ports[2], lvl);
 
         register_node_if_active(
             graph, ite); // either a ready if-then-else or commutation
@@ -3187,44 +3227,6 @@ go_of_lambda_term(
 
     // This function takes ownership of the whole `term` object.
     free(term);
-}
-
-COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) //
-static struct context
-of_lambda_term(struct lambda_term *const restrict term) {
-    assert(term);
-
-    const struct node root = xmalloc_node(SYMBOL_ROOT, PHASE_INITIAL);
-    const struct node eraser = xmalloc_node(SYMBOL_ERASER, PHASE_INITIAL);
-
-    // Since the principle root port is connected to the eraser, the root will
-    // never interact with "real" nodes.
-    connect_ports(&root.ports[0], &eraser.ports[0]);
-
-    struct context graph = {
-        .root = root,
-        .annihilations = xcalloc(1, sizeof *graph.annihilations),
-        .commutations = xcalloc(1, sizeof *graph.commutations),
-        .betas = xcalloc(1, sizeof *graph.betas),
-        .unary_calls = xcalloc(1, sizeof *graph.unary_calls),
-        .binary_calls = xcalloc(1, sizeof *graph.binary_calls),
-        .binary_calls_aux = xcalloc(1, sizeof *graph.binary_calls_aux),
-        .if_then_elses = xcalloc(1, sizeof *graph.if_then_elses),
-        .current_phase = PHASE_INITIAL,
-        .is_reading_back = false,
-
-#ifdef OPTISCOPE_ENABLE_STATS
-        .nannihilations = 0,
-        .ncommutations = 0,
-        .nbetas = 0,
-        .ncalls = 0,
-        .nif_then_elses = 0,
-#endif
-    };
-
-    go_of_lambda_term(&graph, term, &root.ports[1], 0);
-
-    return graph;
 }
 
 // The complete algorithm
@@ -3242,7 +3244,7 @@ normalize_x_rules(struct context *const restrict graph) {
     assert(graph);
 
     do {
-        if (graph->is_reading_back) { goto auxiliary_rules; }
+        if (graph->phase >= PHASE_UNWIND) { goto auxiliary_rules; }
 
         CONSUME_MULTIFOCUS (graph->betas, f) { interact(graph, beta, f); }
 
@@ -3285,13 +3287,15 @@ optiscope_algorithm(
 
     assert(term);
 
-    struct context graph = of_lambda_term(term);
+    struct context *const graph = alloc_context();
+
+    of_lambda_term(graph, term, &graph->root.ports[1], 0);
 
     // Initiall normalization.
     {
-        graphviz(&graph, "target/0-initial.dot");
-        normalize_x_rules(&graph);
-        graphviz(&graph, "target/0-initialx.dot");
+        graphviz(graph, "target/0-initial.dot");
+        normalize_x_rules(graph);
+        graphviz(graph, "target/0-initialx.dot");
     }
 
 #ifdef OPTISCOPE_ENABLE_STATS
@@ -3309,33 +3313,33 @@ optiscope_algorithm(
 
     if (NULL == stream) { goto cleanup; }
 
-    ITERATE_ONCE (
-        finish, graph.is_reading_back = true, graph.is_reading_back = false) {
-        // Phase #1 {
-        unwind(&graph);
-        graphviz(&graph, "target/1-unwound.dot");
-        normalize_x_rules(&graph);
-        graphviz(&graph, "target/1-unwoundx.dot");
-        // }
-
-        // Phase #2 {
-        scope_remove(&graph);
-        graphviz(&graph, "target/2-unscoped.dot");
-        normalize_x_rules(&graph);
-        graphviz(&graph, "target/2-unscopedx.dot");
-        // }
-
-        // Phase #3 {
-        loop_cut(&graph);
-        graphviz(&graph, "target/3-unlooped.dot");
-        normalize_x_rules(&graph);
-        graphviz(&graph, "target/3-unloopedx.dot");
-        // }
+    // Phase #1.
+    {
+        unwind(graph);
+        graphviz(graph, "target/1-unwound.dot");
+        normalize_x_rules(graph);
+        graphviz(graph, "target/1-unwoundx.dot");
     }
 
-    to_lambda_string(stream, 0, follow_port(&graph.root.ports[1]));
+    // Phase #2.
+    {
+        scope_remove(graph);
+        graphviz(graph, "target/2-unscoped.dot");
+        normalize_x_rules(graph);
+        graphviz(graph, "target/2-unscopedx.dot");
+    }
+
+    // Phase #3.
+    {
+        loop_cut(graph);
+        graphviz(graph, "target/3-unlooped.dot");
+        normalize_x_rules(graph);
+        graphviz(graph, "target/3-unloopedx.dot");
+    }
+
+    to_lambda_string(stream, 0, follow_port(&graph->root.ports[1]));
 
 cleanup:
-    assert(is_normalized_graph(&graph));
-    free_graph(&graph);
+    assert(is_normalized_graph(graph));
+    free_context(graph);
 }
