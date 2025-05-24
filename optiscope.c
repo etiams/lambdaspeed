@@ -313,7 +313,7 @@ PRINTER(panic, stderr, abort())
 
 #define MACHINE_WORD_BITS    UINT64_C(64)
 #define OFFSET_METADATA_BITS UINT64_C(2)
-#define PHASE_METADATA_BITS  UINT64_C(2)
+#define PHASE_METADATA_BITS  UINT64_C(4)
 #define EFFECTIVE_ADDRESS_BITS                                                 \
     (MACHINE_WORD_BITS - OFFSET_METADATA_BITS - PHASE_METADATA_BITS)
 #define UNUSED_ADDRESS_BITS (MACHINE_WORD_BITS - EFFECTIVE_ADDRESS_BITS)
@@ -325,7 +325,7 @@ PRINTER(panic, stderr, abort())
     ((address) >> (EFFECTIVE_ADDRESS_BITS + PHASE_METADATA_BITS))
 #define DECODE_PHASE_METADATA(address)                                         \
     (((address) << OFFSET_METADATA_BITS) >>                                    \
-     (EFFECTIVE_ADDRESS_BITS + PHASE_METADATA_BITS))
+     (EFFECTIVE_ADDRESS_BITS + OFFSET_METADATA_BITS))
 
 #define ENCODE_ADDRESS(metadata, address)                                      \
     (((address) & ADDRESS_MASK) | (metadata))
@@ -347,16 +347,6 @@ STATIC_ASSERT(
 STATIC_ASSERT(
     sizeof(uint64_t (*)(uint64_t value)) <= sizeof(uint64_t),
     "Function handles must fit in `uint64_t`!");
-
-COMPILER_NONNULL(1) COMPILER_HOT //
-inline static void
-set_phase(uint64_t *const restrict port, const uint64_t phase) {
-    assert(port);
-    XASSERT(IS_PRINCIPAL_PORT(*port));
-
-    *port = (*port & 0xCFFFFFFFFFFFFFFF /* clear the phase bits (61-60) */) |
-            (phase << EFFECTIVE_ADDRESS_BITS);
-}
 
 #define MIN_REGULAR_SYMBOL   UINT64_C(0)
 #define MAX_REGULAR_SYMBOL   UINT64_C(11)
@@ -566,6 +556,26 @@ bump_index(const uint64_t symbol) {
             "The symbol `%s` has no index to bump!", //
             print_symbol(symbol));
     }
+}
+
+#define PHASE_INITIAL      UINT64_C(0)
+#define PHASE_UNWIND       UINT64_C(1)
+#define PHASE_SCOPE_REMOVE UINT64_C(2)
+#define PHASE_LOOP_CUT     UINT64_C(3)
+#define PHASE_GARBAGE      UINT64_C(4)
+
+COMPILER_NONNULL(1) COMPILER_HOT //
+inline static void
+set_phase(uint64_t *const restrict port, const uint64_t phase) {
+    assert(port);
+    assert(IS_PRINCIPAL_PORT(*port));
+
+    const uint64_t mask =
+        UINT64_C(0xC3FFFFFFFFFFFFFF); /* clear the phase bits (61-58) */
+
+    *port = (*port & mask) | (phase << EFFECTIVE_ADDRESS_BITS);
+
+    assert(DECODE_PHASE_METADATA(*port) == phase);
 }
 
 // Native function pointers
@@ -2003,15 +2013,13 @@ mark(
 
     focus_on(focus, node);
 
-    const uint64_t altered_phase = graph->current_phase + 1;
-
     CONSUME_MULTIFOCUS (focus, f) {
         XASSERT(f.ports);
 
-        if (DECODE_PHASE_METADATA(f.ports[0]) == altered_phase) { //
+        if (DECODE_PHASE_METADATA(f.ports[0]) == PHASE_GARBAGE) { //
             continue;
         }
-        set_phase(&f.ports[0], altered_phase);
+        set_phase(&f.ports[0], PHASE_GARBAGE);
         focus_on(history, f);
 
         // clang-format off
@@ -2555,7 +2563,7 @@ interact(
 
     if (is_garbage_node(&g.ports[0])) { return; }
 
-    if (DECODE_PHASE_METADATA(f.ports[0]) == graph->current_phase + 1) {
+    if (DECODE_PHASE_METADATA(f.ports[0]) == PHASE_GARBAGE) {
         // This active node was previously marked as garbage.
         goto cleanup;
     }
@@ -2568,11 +2576,6 @@ cleanup:
 
 // The read-back phases
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-
-#define PHASE_INITIAL      UINT64_C(0)
-#define PHASE_UNWIND       UINT64_C(1)
-#define PHASE_SCOPE_REMOVE UINT64_C(2)
-#define PHASE_LOOP_CUT     UINT64_C(3)
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 static struct node_list *
