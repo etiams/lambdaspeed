@@ -1116,6 +1116,8 @@ struct context {
     CONTEXT_MULTIFOCUSES
 #undef X
 #endif
+
+    struct multifocus *gc_focus, *gc_history;
 };
 
 COMPILER_NONNULL(1) COMPILER_COLD //
@@ -1150,6 +1152,9 @@ static struct context *alloc_context(void) {
 #undef X
 #endif
 
+    graph->gc_focus = xcalloc(1, sizeof *graph->gc_focus);
+    graph->gc_history = xcalloc(1, sizeof *graph->gc_history);
+
     return graph;
 }
 
@@ -1172,7 +1177,11 @@ free_context(struct context *const restrict graph) {
         free(graph->focus_name); \
     }
     // clang-format on
+
     CONTEXT_MULTIFOCUSES
+    X(gc_focus)
+    X(gc_history)
+
 #undef X
 
     free(graph);
@@ -2093,9 +2102,8 @@ wait_for_user(const struct context *const restrict graph) {
 // Mark & sweep garbage collection
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-COMPILER_RETURNS_NONNULL COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1, 3)
-COMPILER_COLD //
-static struct multifocus *
+COMPILER_NONNULL(1, 3) //
+static void
 mark(
     const struct context *const restrict graph,
     const struct node node,
@@ -2106,19 +2114,16 @@ mark(
     XASSERT(SYMBOL_ROOT != node.ports);
     assert(root_found);
 
-    struct multifocus *const focus = xcalloc(1, sizeof *focus);
-    struct multifocus *const history = xcalloc(1, sizeof *history);
+    focus_on(graph->gc_focus, node);
 
-    focus_on(focus, node);
-
-    CONSUME_MULTIFOCUS (focus, f) {
+    CONSUME_MULTIFOCUS (graph->gc_focus, f) {
         XASSERT(f.ports);
 
         if (DECODE_PHASE_METADATA(f.ports[0]) == PHASE_GARBAGE) { //
             continue;
         }
         set_phase(&f.ports[0], PHASE_GARBAGE);
-        focus_on(history, f);
+        focus_on(graph->gc_history, f);
 
         // clang-format off
         if (SYMBOL_ROOT == f.ports[-1]) { *root_found = true; break; }
@@ -2128,38 +2133,33 @@ mark(
         XASSERT(nports <= MAX_PORTS);
 
         for (uint8_t i = 0; i < nports; i++) {
-            focus_on(focus, follow_port(&f.ports[i]));
+            focus_on(graph->gc_focus, follow_port(&f.ports[i]));
         }
     }
 
     // Free all the allocated cells of the fallback list.
-    CONSUME_LIST (iter, focus->fallback) {}
-    free(focus);
+    CONSUME_LIST (iter, graph->gc_focus->fallback) {}
 
-    return history;
+    // This focus is to be reused in the next garbage collection.
+    graph->gc_focus->count = 0;
 }
 
-COMPILER_NONNULL(1, 2) COMPILER_COLD //
+COMPILER_NONNULL(1) COMPILER_COLD //
 static void
-sweep(
-    const struct context *const restrict graph,
-    struct multifocus *const restrict history,
-    const bool root_found) {
+sweep(const struct context *const restrict graph, const bool root_found) {
     assert(graph);
     XASSERT(graph->phase < PHASE_UNWIND);
-    assert(history);
+    XASSERT(graph->gc_history);
 
     if (root_found) {
-        // If the node is connected to the root, recover the current phase of
-        // all the modified nodes.
-        CONSUME_MULTIFOCUS (history, f) {
+        CONSUME_MULTIFOCUS (graph->gc_history, f) {
             set_phase(&f.ports[0], graph->phase);
         }
     } else {
-        // Otherwise, free all the nodes not reachable from the root.
-        CONSUME_MULTIFOCUS (history, f) {
+        CONSUME_MULTIFOCUS (graph->gc_history, f) {
             if (graph->phase >= PHASE_FULL_REDUCTION) {
-                // Active nodes will be freed later before interacting.
+                // Delay freeing this node until it is popped from a
+                // corresponding multifocus.
                 free_node_if_not_active(f);
             } else {
                 free_node(f);
@@ -2176,11 +2176,11 @@ collect_garbage(
     assert(graph);
     XASSERT(graph->phase < PHASE_UNWIND);
     XASSERT(node.ports);
+    XASSERT(graph->gc_focus), XASSERT(graph->gc_history);
 
     bool root_found = false;
-    struct multifocus *const history = mark(graph, node, &root_found);
-    sweep(graph, history, root_found);
-    free(history);
+    mark(graph, node, &root_found);
+    sweep(graph, root_found);
 }
 
 // Interaction rules
