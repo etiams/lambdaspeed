@@ -1222,7 +1222,7 @@ static void clear_graphviz_cluster_node(const struct node node);
 COMPILER_HOT //
 static void
 free_node(const struct node node) {
-    debug("🧹 %p", __func__, (void *)node.ports);
+    debug("🧹 %p", (void *)node.ports);
 
     XASSERT(node.ports);
 
