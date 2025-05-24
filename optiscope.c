@@ -1131,7 +1131,7 @@ static struct context *alloc_context(void) {
     // never interact with "real" nodes.
     connect_ports(&root.ports[0], &eraser.ports[0]);
 
-    struct context *graph = xmalloc(sizeof *graph);
+    struct context *const graph = xmalloc(sizeof *graph);
     graph->root = root;
     graph->phase = PHASE_WEAK_REDUCTION;
 
@@ -2670,7 +2670,9 @@ cleanup:
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 static struct node_list *
-iterate_nodes(const struct context *graph, const struct symbol_range range) {
+iterate_nodes(
+    const struct context *const graph,
+    const struct symbol_range range) {
     assert(graph);
     XASSERT(graph->root.ports);
 
