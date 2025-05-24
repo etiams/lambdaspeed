@@ -811,6 +811,10 @@ struct node {
     uint64_t *ports;
 };
 
+STATIC_ASSERT(
+    sizeof(struct node) == sizeof(uint64_t *),
+    "`struct node` must be as tiny as a pointer!");
+
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) COMPILER_HOT
 COMPILER_FLATTEN //
 inline static struct node
@@ -1045,7 +1049,8 @@ is_visited(
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 #ifndef OPTISCOPE_MULTIFOCUS_COUNT
-#define OPTISCOPE_MULTIFOCUS_COUNT (1024 * 1024)
+#define OPTISCOPE_MULTIFOCUS_COUNT                                             \
+    ((1024 * 1024) / sizeof(struct node)) // 1 MB default
 #endif
 
 struct multifocus {
