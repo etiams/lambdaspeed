@@ -2486,6 +2486,30 @@ do_binary_call_aux(
 
 TYPE_CHECK_RULE(do_binary_call_aux);
 
+COMPILER_NONNULL(1, 3, 4) COMPILER_HOT //
+static void
+connect_branch(
+    struct context *const restrict graph,
+    const struct node f,
+    uint64_t *const restrict choice,
+    uint64_t *const restrict other) {
+    assert(graph);
+    XASSERT(f.ports);
+    assert(choice);
+    assert(other);
+
+    const struct node eraser = alloc_node(graph, SYMBOL_ERASER);
+
+    connect_ports(DECODE_ADDRESS(f.ports[1]), choice);
+    register_node_if_active(graph, node_of_port(choice));
+
+    connect_ports(&eraser.ports[0], other);
+
+    if (!is_garbage_node(&eraser.ports[0])) { //
+        collect_garbage(graph, eraser);
+    }
+}
+
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 do_if_then_else(
@@ -2500,16 +2524,13 @@ do_if_then_else(
     graph->nif_then_elses++;
 #endif
 
-    uint64_t *const choice_port =
-        g.ports[1] ? DECODE_ADDRESS(f.ports[3]) : DECODE_ADDRESS(f.ports[2]);
-    const struct node choice_node = //
-        node_of_port(choice_port);
+    uint64_t *const if_then = DECODE_ADDRESS(f.ports[3]), //
+        *const if_else = DECODE_ADDRESS(f.ports[2]);
 
-    connect_ports(DECODE_ADDRESS(f.ports[1]), choice_port);
-    register_node_if_active(graph, choice_node);
-
-    if (!is_garbage_node(choice_port)) { //
-        collect_garbage(graph, choice_node);
+    if (g.ports[1]) {
+        connect_branch(graph, f, if_then, if_else);
+    } else {
+        connect_branch(graph, f, if_else, if_then);
     }
 }
 

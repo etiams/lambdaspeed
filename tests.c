@@ -834,7 +834,7 @@ fast_y_fibonacci_term(void) {
 
 static struct lambda_term *
 fast_y_fibonacci_test(void) {
-    return applicator(fast_y_fibonacci_term(), cell(3));
+    return applicator(fast_y_fibonacci_term(), cell(10));
 }
 
 // Examples from the literature
@@ -959,7 +959,7 @@ main(void) {
     TEST_CASE(unary_arithmetic, "cell[2048]");
     TEST_CASE(binary_arithmetic, "cell[11]");
     TEST_CASE(conditionals, "cell[10]");
-    TEST_CASE(fast_y_fibonacci_test, "xxx");
+    TEST_CASE(fast_y_fibonacci_test, "cell[55]");
     TEST_CASE(lamping_example, "(λ 0)");
     TEST_CASE(lamping_example_2, "(λ 0)");
     TEST_CASE(asperti_guerrini_example, "(λ (0 0))");
