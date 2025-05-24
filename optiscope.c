@@ -2556,12 +2556,8 @@ interact(
     assert(rule);
     XASSERT(f.ports);
 
-    if (is_garbage_node(&f.ports[0])) { return; }
-
     const struct node g = follow_port(&f.ports[0]);
     XASSERT(g.ports);
-
-    if (is_garbage_node(&g.ports[0])) { return; }
 
     if (DECODE_PHASE_METADATA(f.ports[0]) == PHASE_GARBAGE) {
         // This active node was previously marked as garbage.
