@@ -435,7 +435,7 @@ ports_count(const uint64_t symbol) {
 }
 
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_RETURNS_NONNULL
-COMPILER_NONNULL(1) //
+COMPILER_NONNULL(1) COMPILER_HOT //
 inline static uint64_t *
 get_principal_port(uint64_t *const restrict port) {
     assert(port);
@@ -501,16 +501,6 @@ symbol_index(const uint64_t symbol) {
     }
 }
 
-COMPILER_CONST COMPILER_WARN_UNUSED_RESULT //
-inline static bool
-is_canonical_symbol(const uint64_t symbol) {
-    if (IS_DUPLICATOR(symbol) || IS_DELIMITER(symbol)) {
-        return 0 == symbol_index(symbol);
-    }
-
-    return true;
-}
-
 #define MAX_SSYMBOL_SIZE 64
 
 COMPILER_CONST COMPILER_WARN_UNUSED_RESULT COMPILER_RETURNS_NONNULL //
@@ -545,8 +535,8 @@ print_symbol(const uint64_t symbol) {
     return buffer;
 }
 
-COMPILER_WARN_UNUSED_RESULT //
-static uint64_t
+COMPILER_WARN_UNUSED_RESULT COMPILER_HOT //
+inline static uint64_t
 bump_index(const uint64_t symbol) {
     if (MAX_DELIMITER_INDEX == symbol || MAX_DUPLICATOR_INDEX == symbol) {
         panic("Maximum index of %" PRIu64 " is reached!", INDEX_RANGE);
@@ -855,7 +845,7 @@ compare_node_ptrs(const struct node f, const struct node g) {
     } while (0)
 
 COMPILER_WARN_UNUSED_RESULT COMPILER_COLD //
-inline static struct node
+static struct node
 xmalloc_node(const uint64_t symbol, const uint64_t phase) {
     const uint64_t n = ports_count(symbol);
 
@@ -2144,7 +2134,7 @@ mark(
     graph->gc_focus->count = 0;
 }
 
-COMPILER_NONNULL(1) COMPILER_COLD //
+COMPILER_NONNULL(1) //
 static void
 sweep(const struct context *const restrict graph, const bool root_found) {
     assert(graph);
@@ -2167,7 +2157,7 @@ sweep(const struct context *const restrict graph, const bool root_found) {
     }
 }
 
-COMPILER_NONNULL(1) COMPILER_COLD //
+COMPILER_NONNULL(1) //
 static void
 collect_garbage(
     const struct context *const restrict graph,
@@ -2321,7 +2311,7 @@ debug_interaction(
 #endif // OPTISCOPE_ENABLE_TRACING
 
 COMPILER_NONNULL(1) COMPILER_HOT //
-static void
+inline static void
 rewire_vertically(
     struct context *const restrict graph,
     const struct node f,
@@ -2342,7 +2332,7 @@ rewire_vertically(
 }
 
 COMPILER_NONNULL(1, 3) COMPILER_HOT //
-static void
+inline static void
 protrude_node(
     struct context *const restrict graph,
     const struct node f,
