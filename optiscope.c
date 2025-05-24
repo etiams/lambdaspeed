@@ -2153,8 +2153,12 @@ sweep(
     } else {
         // Otherwise, free all the nodes not reachable from the root.
         CONSUME_MULTIFOCUS (history, f) {
-            // Active nodes will be freed later before interacting.
-            free_node_if_not_active(f);
+            if (graph->phase >= PHASE_FULL_REDUCTION) {
+                // Active nodes will be freed later before interacting.
+                free_node_if_not_active(f);
+            } else {
+                free_node(f);
+            }
         }
     }
 }
