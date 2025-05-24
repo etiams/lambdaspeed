@@ -2149,7 +2149,6 @@ static void
 sweep(const struct context *const restrict graph, const bool root_found) {
     assert(graph);
     XASSERT(graph->phase < PHASE_UNWIND);
-    XASSERT(graph->gc_history);
 
     if (root_found) {
         CONSUME_MULTIFOCUS (graph->gc_history, f) {
@@ -2176,7 +2175,8 @@ collect_garbage(
     assert(graph);
     XASSERT(graph->phase < PHASE_UNWIND);
     XASSERT(node.ports);
-    XASSERT(graph->gc_focus), XASSERT(graph->gc_history);
+    XASSERT(graph->gc_focus), XASSERT(0 == graph->gc_focus->count);
+    XASSERT(graph->gc_history), XASSERT(0 == graph->gc_history->count);
 
     bool root_found = false;
     mark(graph, node, &root_found);
