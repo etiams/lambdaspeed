@@ -399,6 +399,7 @@ symbol_is_in_range(const struct symbol_range range, const uint64_t symbol) {
 // clang-format off
 #define SYMBOL_RANGE(min, max) ((struct symbol_range){min, max})
 #define SYMBOL_RANGE_1(symbol) SYMBOL_RANGE(symbol, symbol)
+#define SYMBOL_FULL_RANGE SYMBOL_RANGE(SYMBOL_ROOT + 1, UINT64_MAX)
 #define DUPLICATOR_RANGE \
     SYMBOL_RANGE(SYMBOL_DUPLICATOR(UINT64_C(0)), MAX_DUPLICATOR_INDEX)
 #define DELIMITER_RANGE \
@@ -558,11 +559,12 @@ bump_index(const uint64_t symbol) {
     }
 }
 
-#define PHASE_FULL_REDUCTION UINT64_C(0)
-#define PHASE_UNWIND         UINT64_C(1)
-#define PHASE_SCOPE_REMOVE   UINT64_C(2)
-#define PHASE_LOOP_CUT       UINT64_C(3)
-#define PHASE_GARBAGE        UINT64_C(4)
+#define PHASE_WEAK_REDUCTION UINT64_C(0)
+#define PHASE_FULL_REDUCTION UINT64_C(1)
+#define PHASE_UNWIND         UINT64_C(2)
+#define PHASE_SCOPE_REMOVE   UINT64_C(3)
+#define PHASE_LOOP_CUT       UINT64_C(4)
+#define PHASE_GARBAGE        UINT64_C(5)
 
 COMPILER_NONNULL(1) COMPILER_HOT //
 inline static void
@@ -1121,9 +1123,9 @@ COMPILER_WARN_UNUSED_RESULT COMPILER_COLD
 // clang-format on
 static struct context *alloc_context(void) {
     const struct node root = //
-        xmalloc_node(SYMBOL_ROOT, PHASE_FULL_REDUCTION);
+        xmalloc_node(SYMBOL_ROOT, PHASE_WEAK_REDUCTION);
     const struct node eraser =
-        xmalloc_node(SYMBOL_ERASER, PHASE_FULL_REDUCTION);
+        xmalloc_node(SYMBOL_ERASER, PHASE_WEAK_REDUCTION);
 
     // Since the principle root port is connected to the eraser, the root will
     // never interact with "real" nodes.
@@ -1131,12 +1133,9 @@ static struct context *alloc_context(void) {
 
     struct context *graph = xmalloc(sizeof *graph);
     graph->root = root;
-    graph->phase = PHASE_FULL_REDUCTION;
+    graph->phase = PHASE_WEAK_REDUCTION;
 
-    // clang-format off
-#define X(focus_name) \
-    graph->focus_name = xcalloc(1, sizeof *graph->focus_name);
-    // clang-format on
+#define X(focus_name) graph->focus_name = NULL;
     CONTEXT_MULTIFOCUSES
 #undef X
 
@@ -1183,6 +1182,31 @@ is_normalized_graph(const struct context *const restrict graph) {
     return CONTEXT_MULTIFOCUSES true;
 #undef X
 }
+
+#ifdef OPTISCOPE_ENABLE_STATS
+
+COMPILER_NONNULL(1) //
+static void
+print_stats(const struct context *const restrict graph) {
+    assert(graph);
+
+    printf("Annihilation interactions: %" PRIu64 "\n", graph.nannihilations);
+    printf("Commutation interactions: %" PRIu64 "\n", graph.ncommutations);
+    printf("Beta interactions: %" PRIu64 "\n", graph.nbetas);
+    printf("Native function calls: %" PRIu64 "\n", graph.ncalls);
+    printf("If-then-elses: %" PRIu64 "\n", graph.nif_then_elses);
+
+    printf(
+        "Total interactions: %" PRIu64 "\n",
+        graph.nannihilations + graph.ncommutations + graph.nbetas +
+            graph.nif_then_elses + graph.ncalls);
+}
+
+#else
+
+#define print_stats(graph) ((void)0)
+
+#endif // OPTISCOPE_ENABLE_STATS
 
 COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) COMPILER_HOT //
 static struct node
@@ -1324,6 +1348,37 @@ free_node(const struct node node) {
     }
 }
 
+#define DISPATCH_ACTIVE_PAIR(f, g)                                             \
+    do {                                                                       \
+        const uint64_t fsym = f.ports[-1], gsym = g.ports[-1];                 \
+                                                                               \
+        if (SYMBOL_APPLICATOR == fsym && SYMBOL_LAMBDA == gsym) {              \
+            BETA(f, g);                                                        \
+        } else if (SYMBOL_APPLICATOR == gsym && SYMBOL_LAMBDA == fsym) {       \
+            BETA(g, f);                                                        \
+        } else if (SYMBOL_UNARY_CALL == fsym && SYMBOL_CELL == gsym) {         \
+            UNARY_CALL(f, g);                                                  \
+        } else if (SYMBOL_CELL == fsym && SYMBOL_UNARY_CALL == gsym) {         \
+            UNARY_CALL(g, f);                                                  \
+        } else if (SYMBOL_BINARY_CALL == fsym && SYMBOL_CELL == gsym) {        \
+            BINARY_CALL(f, g);                                                 \
+        } else if (SYMBOL_BINARY_CALL == gsym && SYMBOL_CELL == fsym) {        \
+            BINARY_CALL(g, f);                                                 \
+        } else if (SYMBOL_BINARY_CALL_AUX == fsym && SYMBOL_CELL == gsym) {    \
+            BINARY_CALL_AUX(f, g);                                             \
+        } else if (SYMBOL_BINARY_CALL_AUX == gsym && SYMBOL_CELL == fsym) {    \
+            BINARY_CALL_AUX(g, f);                                             \
+        } else if (SYMBOL_IF_THEN_ELSE == fsym && SYMBOL_CELL == gsym) {       \
+            IF_THEN_ELSE(f, g);                                                \
+        } else if (SYMBOL_IF_THEN_ELSE == gsym && SYMBOL_CELL == fsym) {       \
+            IF_THEN_ELSE(g, f);                                                \
+        } else if (fsym == gsym) {                                             \
+            ANNIHILATE(f, g);                                                  \
+        } else {                                                               \
+            COMMUTE(f, g);                                                     \
+        }                                                                      \
+    } while (false)
+
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 register_active_pair(
@@ -1334,33 +1389,25 @@ register_active_pair(
     XASSERT(f.ports), XASSERT(g.ports);
     assert(is_interaction(f, g));
 
-    const uint64_t fsym = f.ports[-1], gsym = g.ports[-1];
+    if (PHASE_WEAK_REDUCTION == graph->phase) { return; }
 
-    if (SYMBOL_APPLICATOR == fsym && SYMBOL_LAMBDA == gsym) {
-        focus_on(graph->betas, f);
-    } else if (SYMBOL_APPLICATOR == gsym && SYMBOL_LAMBDA == fsym) {
-        focus_on(graph->betas, g);
-    } else if (SYMBOL_UNARY_CALL == fsym && SYMBOL_CELL == gsym) {
-        focus_on(graph->unary_calls, f);
-    } else if (SYMBOL_CELL == fsym && SYMBOL_UNARY_CALL == gsym) {
-        focus_on(graph->unary_calls, g);
-    } else if (SYMBOL_BINARY_CALL == fsym && SYMBOL_CELL == gsym) {
-        focus_on(graph->binary_calls, f);
-    } else if (SYMBOL_BINARY_CALL == gsym && SYMBOL_CELL == fsym) {
-        focus_on(graph->binary_calls, g);
-    } else if (SYMBOL_BINARY_CALL_AUX == fsym && SYMBOL_CELL == gsym) {
-        focus_on(graph->binary_calls_aux, f);
-    } else if (SYMBOL_BINARY_CALL_AUX == gsym && SYMBOL_CELL == fsym) {
-        focus_on(graph->binary_calls_aux, g);
-    } else if (SYMBOL_IF_THEN_ELSE == fsym && SYMBOL_CELL == gsym) {
-        focus_on(graph->if_then_elses, f);
-    } else if (SYMBOL_IF_THEN_ELSE == gsym && SYMBOL_CELL == fsym) {
-        focus_on(graph->if_then_elses, g);
-    } else if (fsym == gsym) {
-        focus_on(graph->annihilations, f);
-    } else {
-        focus_on(graph->commutations, f);
-    }
+#define BETA(f, g)            focus_on(graph->betas, f)
+#define UNARY_CALL(f, g)      focus_on(graph->unary_calls, f)
+#define BINARY_CALL(f, g)     focus_on(graph->binary_calls, f)
+#define BINARY_CALL_AUX(f, g) focus_on(graph->binary_calls_aux, f)
+#define IF_THEN_ELSE(f, g)    focus_on(graph->if_then_elses, f)
+#define ANNIHILATE(f, g)      focus_on(graph->annihilations, f)
+#define COMMUTE(f, g)         focus_on(graph->commutations, f)
+
+    DISPATCH_ACTIVE_PAIR(f, g);
+
+#undef COMMUTE
+#undef ANNIHILATE
+#undef IF_THEN_ELSE
+#undef BINARY_CALL_AUX
+#undef BINARY_CALL
+#undef UNARY_CALL
+#undef BETA
 }
 
 COMPILER_NONNULL(1) COMPILER_HOT //
@@ -1372,6 +1419,8 @@ register_pair_if_active(
     assert(graph);
     XASSERT(f.ports), XASSERT(g.ports);
 
+    if (PHASE_WEAK_REDUCTION == graph->phase) { return; }
+
     if (is_interaction(f, g)) { register_active_pair(graph, f, g); }
 }
 
@@ -1382,6 +1431,8 @@ register_node_if_active(
     const struct node node) {
     assert(graph);
     XASSERT(node.ports);
+
+    if (PHASE_WEAK_REDUCTION == graph->phase) { return; }
 
     const struct node f = node, g = follow_port(&node.ports[0]);
 
@@ -2595,11 +2646,13 @@ interact(
     assert(graph);
     assert(rule);
     XASSERT(f.ports);
+    XASSERT(SYMBOL_ROOT != f.ports[-1]);
 
     if (is_garbage_node(&f.ports[0])) { return; }
 
     const struct node g = follow_port(&f.ports[0]);
     XASSERT(g.ports);
+    XASSERT(SYMBOL_ROOT != g.ports[-1]);
 
     if (DECODE_PHASE_METADATA(f.ports[0]) == PHASE_GARBAGE) {
         // This active node was previously marked as garbage.
@@ -2748,8 +2801,6 @@ loop_cut(struct context *const restrict graph) {
         register_node_if_active(graph, bottom_eraser);
     }
 }
-
-#undef PROCESS_NODE_IN_PHASE
 
 // Conversion to a lambda term string
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -2964,7 +3015,7 @@ if_then_else(
 // Conversion from a lambda term
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1, 2) //
+COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1, 2) //
 static uint64_t
 count_binder_usage(
     const struct lambda_term *const restrict term,
@@ -2973,53 +3024,27 @@ count_binder_usage(
     assert(lambda);
 
     switch (term->ty) {
-    case LAMBDA_TERM_APPLICATOR: {
-        struct lambda_term *const rator = term->data.applicator.rator, //
-            *const rand = term->data.applicator.rand;
-        XASSERT(rator);
-        XASSERT(rand);
-
-        return count_binder_usage(rator, lambda) +
-               count_binder_usage(rand, lambda);
-    }
-    case LAMBDA_TERM_LAMBDA: {
-        struct lambda_term *const body = term->data.lambda.body;
-        XASSERT(body);
-
-        return count_binder_usage(body, lambda);
-    }
+    case LAMBDA_TERM_APPLICATOR:
+        return count_binder_usage(term->data.applicator.rator, lambda) +
+               count_binder_usage(term->data.applicator.rand, lambda);
+    case LAMBDA_TERM_LAMBDA:
+        return count_binder_usage(term->data.lambda.body, lambda);
     case LAMBDA_TERM_VAR: {
         struct lambda_data *this_lambda = term->data.var;
         XASSERT(this_lambda);
 
-        return lambda == this_lambda;
+        return lambda == this_lambda ? true : false;
     }
     case LAMBDA_TERM_CELL: return 0;
-    case LAMBDA_TERM_UNARY_CALL: {
-        struct lambda_term *const rand = term->data.u_call.rand;
-        XASSERT(rand);
-
-        return count_binder_usage(rand, lambda);
-    }
-    case LAMBDA_TERM_BINARY_CALL: {
-        struct lambda_term *const lhs = term->data.b_call.lhs, //
-            *const rhs = term->data.b_call.rhs;
-        XASSERT(lhs), XASSERT(rhs);
-
-        return count_binder_usage(lhs, lambda) +
-               count_binder_usage(rhs, lambda);
-    }
-    case LAMBDA_TERM_IF_THEN_ELSE: {
-        struct lambda_term *const condition = term->data.ite.condition, //
-            *const if_then = term->data.ite.if_then,                    //
-                *const if_else = term->data.ite.if_else;
-        XASSERT(condition);
-        XASSERT(if_then), XASSERT(if_else);
-
-        return count_binder_usage(condition, lambda) +
-               count_binder_usage(if_then, lambda) +
-               count_binder_usage(if_else, lambda);
-    }
+    case LAMBDA_TERM_UNARY_CALL:
+        return count_binder_usage(term->data.u_call.rand, lambda);
+    case LAMBDA_TERM_BINARY_CALL:
+        return count_binder_usage(term->data.b_call.lhs, lambda) +
+               count_binder_usage(term->data.b_call.rhs, lambda);
+    case LAMBDA_TERM_IF_THEN_ELSE:
+        return count_binder_usage(term->data.ite.condition, lambda) +
+               count_binder_usage(term->data.ite.if_then, lambda) +
+               count_binder_usage(term->data.ite.if_else, lambda);
     default: COMPILER_UNREACHABLE();
     }
 }
@@ -3107,11 +3132,6 @@ of_lambda_term(
         of_lambda_term(graph, rator, &applicator.ports[0], lvl);
         of_lambda_term(graph, rand, &applicator.ports[2], lvl);
 
-        const struct node lambda = follow_port(&applicator.ports[0]);
-        if (is_beta(applicator, lambda)) {
-            focus_on(graph->betas, applicator); //
-        }
-
         break;
     }
     case LAMBDA_TERM_LAMBDA: {
@@ -3177,9 +3197,6 @@ of_lambda_term(
 #pragma GCC diagnostic pop
         of_lambda_term(graph, rand, &call.ports[0], lvl);
 
-        register_node_if_active(
-            graph, call); // either a ready call or commutation
-
         break;
     }
     case LAMBDA_TERM_BINARY_CALL: {
@@ -3199,9 +3216,6 @@ of_lambda_term(
         of_lambda_term(graph, lhs, &call.ports[0], lvl);
         of_lambda_term(graph, rhs, &call.ports[2], lvl);
 
-        register_node_if_active(
-            graph, call); // either a ready call or commutation
-
         break;
     }
     case LAMBDA_TERM_IF_THEN_ELSE: {
@@ -3217,9 +3231,6 @@ of_lambda_term(
         of_lambda_term(graph, if_then, &ite.ports[3], lvl);
         of_lambda_term(graph, if_else, &ite.ports[2], lvl);
 
-        register_node_if_active(
-            graph, ite); // either a ready if-then-else or commutation
-
         break;
     }
     default: COMPILER_UNREACHABLE();
@@ -3232,9 +3243,29 @@ of_lambda_term(
 // The complete algorithm
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-#ifndef OPTISCOPE_MAX_COMMUTATIONS
-#define OPTISCOPE_MAX_COMMUTATIONS 100000
-#endif
+COMPILER_NONNULL(1) //
+static void
+populate_multifocuses(struct context *const restrict graph) {
+    assert(graph);
+
+    graph->phase = PHASE_FULL_REDUCTION;
+
+    CONSUME_LIST (
+        iter,
+        iterate_nodes(graph, SYMBOL_FULL_RANGE /* excluding the root node */)) {
+        const struct node f = iter->node;
+        XASSERT(f.ports);
+        PROCESS_NODE_IN_PHASE(graph, f);
+
+        const struct node g = follow_port(&f.ports[0]);
+        XASSERT(g.ports);
+
+        if (is_interacting_with(f, g) && compare_node_ptrs(f, g) < 0 &&
+            SYMBOL_ROOT != g.ports[-1]) {
+            register_active_pair(graph, f, g);
+        }
+    }
+}
 
 COMPILER_NONNULL(1) //
 static void
@@ -3246,36 +3277,89 @@ normalize_x_rules(struct context *const restrict graph) {
     do {
         if (graph->phase >= PHASE_UNWIND) { goto auxiliary_rules; }
 
+        // clang-format off
         CONSUME_MULTIFOCUS (graph->betas, f) { interact(graph, beta, f); }
-
-        CONSUME_MULTIFOCUS (graph->unary_calls, f) {
-            interact(graph, do_unary_call, f);
-        }
-
-        CONSUME_MULTIFOCUS (graph->binary_calls, f) {
-            interact(graph, do_binary_call, f);
-        }
-
-        CONSUME_MULTIFOCUS (graph->binary_calls_aux, f) {
-            interact(graph, do_binary_call_aux, f);
-        }
-
-        CONSUME_MULTIFOCUS (graph->if_then_elses, f) {
-            interact(graph, do_if_then_else, f);
-        }
+        CONSUME_MULTIFOCUS (graph->unary_calls, f) { interact(graph, do_unary_call, f); }
+        CONSUME_MULTIFOCUS (graph->binary_calls, f) { interact(graph, do_binary_call, f); }
+        CONSUME_MULTIFOCUS (graph->binary_calls_aux, f) { interact(graph, do_binary_call_aux, f); }
+        CONSUME_MULTIFOCUS (graph->if_then_elses, f) { interact(graph, do_if_then_else, f); }
+        // clang-format on
 
     auxiliary_rules:
-        CONSUME_MULTIFOCUS (graph->annihilations, f) {
-            interact(graph, annihilate, f);
-        }
-
-        uint64_t fuel = OPTISCOPE_MAX_COMMUTATIONS;
-        CONSUME_MULTIFOCUS (graph->commutations, f) {
-            interact(graph, commute, f);
-            fuel--;
-            if (0 == fuel) { break; }
-        }
+        // clang-format off
+        CONSUME_MULTIFOCUS (graph->annihilations, f) { interact(graph, annihilate, f); }
+        CONSUME_MULTIFOCUS (graph->commutations, f) { interact(graph, commute, f); }
+        // clang-format on
     } while (!is_normalized_graph(graph));
+}
+
+COMPILER_NONNULL(1) COMPILER_HOT //
+static void
+choose_rule(
+    struct context *const restrict graph,
+    const struct node f,
+    const struct node g) {
+    assert(graph);
+    XASSERT(f.ports), XASSERT(g.ports);
+    assert(is_interaction(f, g));
+
+#define BETA(f, g)            beta(graph, f, g)
+#define UNARY_CALL(f, g)      do_unary_call(graph, f, g)
+#define BINARY_CALL(f, g)     do_binary_call(graph, f, g)
+#define BINARY_CALL_AUX(f, g) do_binary_call_aux(graph, f, g)
+#define IF_THEN_ELSE(f, g)    do_if_then_else(graph, f, g)
+#define ANNIHILATE(f, g)      annihilate(graph, f, g)
+#define COMMUTE(f, g)         commute(graph, f, g)
+
+    DISPATCH_ACTIVE_PAIR(f, g);
+
+#undef COMMUTE
+#undef ANNIHILATE
+#undef IF_THEN_ELSE
+#undef BINARY_CALL_AUX
+#undef BINARY_CALL
+#undef UNARY_CALL
+#undef BETA
+
+    free_node(f), free_node(g);
+}
+
+COMPILER_NONNULL(1) //
+static void
+weak_reduction(struct context *const restrict graph) {
+    assert(graph);
+
+    struct node apex = graph->root;
+
+    // clang-format off
+#define TRANSITION(action, label) do { action; goto label; } while (false)
+    // clang-format on
+
+rescan:;
+    struct node f = follow_port(&apex.ports[1]);
+
+progress:
+    XASSERT(f.ports != apex.ports);
+
+    uint64_t *const target_port = DECODE_ADDRESS(f.ports[0]);
+
+    const struct node g = node_of_port(target_port);
+
+    if (is_interacting_with(f, g)) {
+        TRANSITION(choose_rule(graph, f, g), rescan);
+    }
+
+    if (target_port == &apex.ports[1]) {
+        if (IS_DELIMITER(f.ports[-1])) { TRANSITION(apex = f, rescan); }
+
+        goto finish;
+    }
+
+    TRANSITION(f = g, progress);
+
+finish:;
+
+#undef TRANSITION
 }
 
 extern void
@@ -3291,55 +3375,55 @@ optiscope_algorithm(
 
     of_lambda_term(graph, term, &graph->root.ports[1], 0);
 
-    // Initiall normalization.
+    // Phase #1: weak reduction.
     {
-        graphviz(graph, "target/0-initial.dot");
-        normalize_x_rules(graph);
-        graphviz(graph, "target/0-initialx.dot");
+        graphviz(graph, "target/1-initial.dot");
+        weak_reduction(graph);
+        graphviz(graph, "target/1-weakly-reduced.dot");
     }
 
-#ifdef OPTISCOPE_ENABLE_STATS
-    printf("Annihilation interactions: %" PRIu64 "\n", graph.nannihilations);
-    printf("Commutation interactions: %" PRIu64 "\n", graph.ncommutations);
-    printf("Beta interactions: %" PRIu64 "\n", graph.nbetas);
-    printf("Native function calls: %" PRIu64 "\n", graph.ncalls);
-    printf("If-then-elses: %" PRIu64 "\n", graph.nif_then_elses);
+    if (NULL == stream) { goto finish; }
 
-    printf(
-        "Total interactions: %" PRIu64 "\n",
-        graph.nannihilations + graph.ncommutations + graph.nbetas +
-            graph.nif_then_elses + graph.ncalls);
-#endif
+#define X(focus_name) graph->focus_name = xcalloc(1, sizeof *graph->focus_name);
+    CONTEXT_MULTIFOCUSES
+#undef X
 
-    if (NULL == stream) { goto cleanup; }
+    // Phase #2: full reduction.
+    {
+        populate_multifocuses(graph);
+        normalize_x_rules(graph);
+        graphviz(graph, "target/2-fully-reduced.dot");
+    }
 
-    // Phase #1.
+    // Phase #3: unwind.
     {
         unwind(graph);
-        graphviz(graph, "target/1-unwound.dot");
+        graphviz(graph, "target/3-unwound.dot");
         normalize_x_rules(graph);
-        graphviz(graph, "target/1-unwoundx.dot");
+        graphviz(graph, "target/3-unwoundx.dot");
     }
 
-    // Phase #2.
+    // Phase #4: scope remove.
     {
         scope_remove(graph);
-        graphviz(graph, "target/2-unscoped.dot");
+        graphviz(graph, "target/4-unscoped.dot");
         normalize_x_rules(graph);
-        graphviz(graph, "target/2-unscopedx.dot");
+        graphviz(graph, "target/4-unscopedx.dot");
     }
 
-    // Phase #3.
+    // Phase #5: loop cut.
     {
         loop_cut(graph);
-        graphviz(graph, "target/3-unlooped.dot");
+        graphviz(graph, "target/5-unlooped.dot");
         normalize_x_rules(graph);
-        graphviz(graph, "target/3-unloopedx.dot");
+        graphviz(graph, "target/5-unloopedx.dot");
     }
+
+    assert(is_normalized_graph(graph));
 
     to_lambda_string(stream, 0, follow_port(&graph->root.ports[1]));
 
-cleanup:
-    assert(is_normalized_graph(graph));
+finish:
+    print_stats(graph);
     free_context(graph);
 }
