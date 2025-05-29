@@ -1,5 +1,7 @@
 # 🔬 Optiscope
 
+🚧 **WORK IN PROGRESS**
+
 _Optiscope_ is an efficient, Lévy-optimal implementation of the pure lambda calculus endowed with native function calls, if-then-else expressions, & a fixed-point operator.
 
 Being the first public implementation of [Lambdascope] [^lambdascope] written in portable C99, it is also the first interaction net reducer capable of calling user-provided functions at native speed. Such a powerfull combination opens a new specialized programming paradigm suited for problems exhibiting both structural sharing & computational intensitie.
@@ -200,6 +202,8 @@ Mathematically, our implementation follows the Lambdascope formalism [^lambdasco
 ```
 
 </details>
+
+Note: the benchmarks are many times slower than those in [`benchmarks-haskell/`](benchmarks-haskell/). Investigate the cause.
 
 ### [Ackermann of (3, 3)](benchmarks/ackermann-of-3-3.c)
 
