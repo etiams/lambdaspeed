@@ -1388,34 +1388,48 @@ free_node(const struct node node) {
     do {                                                                       \
         const uint64_t fsym = f.ports[-1], gsym = g.ports[-1];                 \
                                                                                \
-        if (SYMBOL_APPLICATOR == fsym && SYMBOL_LAMBDA == gsym) {              \
-            BETA(f, g);                                                        \
-        } else if (SYMBOL_APPLICATOR == gsym && SYMBOL_LAMBDA == fsym) {       \
-            BETA(g, f);                                                        \
-        } else if (SYMBOL_UNARY_CALL == fsym && SYMBOL_CELL == gsym) {         \
-            UNARY_CALL(f, g);                                                  \
-        } else if (SYMBOL_CELL == fsym && SYMBOL_UNARY_CALL == gsym) {         \
-            UNARY_CALL(g, f);                                                  \
-        } else if (SYMBOL_BINARY_CALL == fsym && SYMBOL_CELL == gsym) {        \
-            BINARY_CALL(f, g);                                                 \
-        } else if (SYMBOL_BINARY_CALL == gsym && SYMBOL_CELL == fsym) {        \
-            BINARY_CALL(g, f);                                                 \
-        } else if (SYMBOL_BINARY_CALL_AUX == fsym && SYMBOL_CELL == gsym) {    \
-            BINARY_CALL_AUX(f, g);                                             \
-        } else if (SYMBOL_BINARY_CALL_AUX == gsym && SYMBOL_CELL == fsym) {    \
-            BINARY_CALL_AUX(g, f);                                             \
-        } else if (SYMBOL_IF_THEN_ELSE == fsym && SYMBOL_CELL == gsym) {       \
-            IF_THEN_ELSE(f, g);                                                \
-        } else if (SYMBOL_IF_THEN_ELSE == gsym && SYMBOL_CELL == fsym) {       \
-            IF_THEN_ELSE(g, f);                                                \
-        } else if (SYMBOL_FIX == fsym && SYMBOL_LAMBDA == gsym) {              \
-            FIX(f, g);                                                         \
-        } else if (SYMBOL_FIX == gsym && SYMBOL_LAMBDA == fsym) {              \
-            FIX(g, f);                                                         \
-        } else if (fsym == gsym) {                                             \
-            ANNIHILATE(f, g);                                                  \
-        } else {                                                               \
-            COMMUTE(f, g);                                                     \
+        switch (fsym) {                                                        \
+        case SYMBOL_APPLICATOR:                                                \
+            if (SYMBOL_LAMBDA == gsym) BETA(f, g);                             \
+            else COMMUTE(f, g);                                                \
+            break;                                                             \
+        case SYMBOL_LAMBDA:                                                    \
+            if (SYMBOL_APPLICATOR == gsym) BETA(g, f);                         \
+            else if (SYMBOL_FIX == gsym) FIX(g, f);                            \
+            else COMMUTE(f, g);                                                \
+            break;                                                             \
+        case SYMBOL_CELL:                                                      \
+            switch (gsym) {                                                    \
+            case SYMBOL_UNARY_CALL: UNARY_CALL(g, f); break;                   \
+            case SYMBOL_BINARY_CALL: BINARY_CALL(g, f); break;                 \
+            case SYMBOL_BINARY_CALL_AUX: BINARY_CALL_AUX(g, f); break;         \
+            case SYMBOL_IF_THEN_ELSE: IF_THEN_ELSE(g, f); break;               \
+            default: COMMUTE(f, g);                                            \
+            }                                                                  \
+            break;                                                             \
+        case SYMBOL_UNARY_CALL:                                                \
+            if (SYMBOL_CELL == gsym) UNARY_CALL(f, g);                         \
+            else COMMUTE(f, g);                                                \
+            break;                                                             \
+        case SYMBOL_BINARY_CALL:                                               \
+            if (SYMBOL_CELL == gsym) BINARY_CALL(f, g);                        \
+            else COMMUTE(f, g);                                                \
+            break;                                                             \
+        case SYMBOL_BINARY_CALL_AUX:                                           \
+            if (SYMBOL_CELL == gsym) BINARY_CALL_AUX(f, g);                    \
+            else COMMUTE(f, g);                                                \
+            break;                                                             \
+        case SYMBOL_IF_THEN_ELSE:                                              \
+            if (SYMBOL_CELL == gsym) IF_THEN_ELSE(f, g);                       \
+            else COMMUTE(f, g);                                                \
+            break;                                                             \
+        case SYMBOL_FIX:                                                       \
+            if (SYMBOL_LAMBDA == gsym) FIX(f, g);                              \
+            else COMMUTE(f, g);                                                \
+            break;                                                             \
+        default:                                                               \
+            if (fsym == gsym) ANNIHILATE(f, g);                                \
+            else COMMUTE(f, g);                                                \
         }                                                                      \
     } while (false)
 
@@ -2740,7 +2754,6 @@ interact(
     assert(graph);
     assert(rule);
     XASSERT(f.ports);
-    XASSERT(SYMBOL_ROOT != f.ports[-1]);
 
     // TODO: this check is not needed, because garbage nodes should not occur in
     // multifocuses in the first place.
@@ -2748,7 +2761,6 @@ interact(
 
     const struct node g = follow_port(&f.ports[0]);
     XASSERT(g.ports);
-    XASSERT(SYMBOL_ROOT != g.ports[-1]);
 
     if (DECODE_PHASE_METADATA(f.ports[0]) == PHASE_GARBAGE) {
         // This active node was previously marked as garbage.

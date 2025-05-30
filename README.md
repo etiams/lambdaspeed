@@ -207,8 +207,8 @@ Note: the benchmarks are many times slower than those in [`benchmarks-haskell/`]
 
 ```
 Benchmark 1: ./ackermann-of-3-3
-  Time (mean ± σ):     20.479 s ±  0.285 s    [User: 20.460 s, System: 0.018 s]
-  Range (min … max):   20.027 s … 20.815 s    5 runs
+  Time (mean ± σ):     20.125 s ±  0.157 s    [User: 20.108 s, System: 0.016 s]
+  Range (min … max):   19.917 s … 20.333 s    5 runs
 ```
 
 <details>
@@ -230,8 +230,8 @@ Total interactions: 789919
 
 ```
 Benchmark 1: ./church-list-reverse-and-sum
-  Time (mean ± σ):      9.526 s ±  0.064 s    [User: 7.922 s, System: 1.603 s]
-  Range (min … max):    9.437 s …  9.601 s    5 runs
+  Time (mean ± σ):      8.755 s ±  0.059 s    [User: 7.115 s, System: 1.639 s]
+  Range (min … max):    8.685 s …  8.832 s    5 runs
 ```
 
 <details>
@@ -253,8 +253,8 @@ Total interactions: 252684083
 
 ```
 Benchmark 1: ./scott-insertion-sort
-  Time (mean ± σ):     11.214 s ±  0.104 s    [User: 10.543 s, System: 0.671 s]
-  Range (min … max):   11.099 s … 11.345 s    5 runs
+  Time (mean ± σ):     10.847 s ±  0.133 s    [User: 10.176 s, System: 0.669 s]
+  Range (min … max):   10.663 s … 11.037 s    5 runs
 ```
 
 <details>
@@ -276,8 +276,8 @@ Total interactions: 173222119
 
 ```
 Benchmark 1: ./scott-tree-map-and-sum
-  Time (mean ± σ):      3.781 s ±  0.021 s    [User: 3.088 s, System: 0.693 s]
-  Range (min … max):    3.751 s …  3.799 s    5 runs
+  Time (mean ± σ):      3.416 s ±  0.005 s    [User: 2.731 s, System: 0.684 s]
+  Range (min … max):    3.410 s …  3.422 s    5 runs
 ```
 
 <details>
