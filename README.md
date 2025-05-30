@@ -10,9 +10,7 @@ Being the first public implementation of [Lambdascope] [^lambdascope] written in
 
 In what follows, we briefly explaine what it means for reduction to be Lévy-optimal, & then describe our results.
 
-_To every person to informe me of a [semantic bug], I will pay $1000 in Bitcoin. If you think you are eligible, please file an issue in the repository._
-
-[semantic bug]: #bountie-policy
+_To every person to informe me of a semantic bug, I will pay $1000 in Bitcoin. More details [here](#bountie-policy)._
 
 ## On optimalitie
 
