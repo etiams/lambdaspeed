@@ -614,6 +614,8 @@ xcalloc(const size_t n, const size_t size) {
     return object;
 }
 
+// Dynamically adjusted chunk list sizes are not an option: they did actually
+// degrade the performance.
 #define POOL_CHUNK_LIST_SIZE 1024 /* for all types of objects */
 
 #define POOL_ALLOCATOR(prefix, chunk_size)                                     \
