@@ -207,8 +207,8 @@ Note: the benchmarks are many times slower than those in [`benchmarks-haskell/`]
 
 ```
 Benchmark 1: ./ackermann-of-3-3
-  Time (mean ± σ):     20.125 s ±  0.157 s    [User: 20.108 s, System: 0.016 s]
-  Range (min … max):   19.917 s … 20.333 s    5 runs
+  Time (mean ± σ):     20.406 s ±  0.254 s    [User: 20.387 s, System: 0.017 s]
+  Range (min … max):   20.172 s … 20.836 s    5 runs
 ```
 
 <details>
@@ -230,26 +230,28 @@ Total interactions: 789919
 
 ```
 Benchmark 1: ./church-list-reverse-and-sum
-  Time (mean ± σ):      8.755 s ±  0.059 s    [User: 7.115 s, System: 1.639 s]
-  Range (min … max):    8.685 s …  8.832 s    5 runs
+  Time (mean ± σ):      2.756 s ±  0.050 s    [User: 2.549 s, System: 0.206 s]
+  Range (min … max):    2.703 s …  2.813 s    5 runs
 ```
 
 <details>
 <summary>Interactions count</summary>
 
 ```
-Annihilation interactions: 18150009
-Commutation interactions: 234498068
+Annihilation interactions: 9138007
+Commutation interactions: 108354052
 Beta interactions: 30006
 Native function calls: 6000
 If-then-elses: 0
 Fixpoints: 0
-Total interactions: 252684083
+Total interactions: 117528065
 ```
 
 </details>
 
 ### [Scott list insertion sort](benchmarks/scott-insertion-sort.c)
+
+TODO: this benchmark does not finish; investigate the cause.
 
 ```
 Benchmark 1: ./scott-insertion-sort
@@ -276,21 +278,21 @@ Total interactions: 173222119
 
 ```
 Benchmark 1: ./scott-tree-map-and-sum
-  Time (mean ± σ):      3.416 s ±  0.005 s    [User: 2.731 s, System: 0.684 s]
-  Range (min … max):    3.410 s …  3.422 s    5 runs
+  Time (mean ± σ):      1.516 s ±  0.013 s    [User: 1.400 s, System: 0.115 s]
+  Range (min … max):    1.496 s …  1.529 s    5 runs
 ```
 
 <details>
 <summary>Interactions count</summary>
 
 ```
-Annihilation interactions: 13418351
-Commutation interactions: 88284603
+Annihilation interactions: 8994656
+Commutation interactions: 44219835
 Beta interactions: 294914
 Native function calls: 65534
 If-then-elses: 0
 Fixpoints: 6
-Total interactions: 102063408
+Total interactions: 53574945
 ```
 
 </details>

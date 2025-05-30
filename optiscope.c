@@ -3149,6 +3149,24 @@ fix(const restrict LambdaTerm f) {
 // Conversion from a lambda term
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
+COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) //
+inline static uint64_t
+is_identity_lambda(struct lambda_term *const restrict term) {
+    assert(term);
+
+    if (LAMBDA_TERM_LAMBDA != term->ty) { return false; }
+
+    struct lambda_data *const tlambda = &term->data.lambda;
+    struct lambda_term *const body = term->data.lambda.body;
+    XASSERT(tlambda);
+    XASSERT(body);
+
+    return LAMBDA_TERM_VAR == body->ty
+               ? tlambda ==
+                     body->data.var /* the body directly points to the binder */
+               : false /* cannot directly point to the binder */;
+}
+
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1, 2) //
 static uint64_t
 count_binder_usage(
@@ -3163,12 +3181,7 @@ count_binder_usage(
                count_binder_usage(term->data.applicator.rand, lambda);
     case LAMBDA_TERM_LAMBDA:
         return count_binder_usage(term->data.lambda.body, lambda);
-    case LAMBDA_TERM_VAR: {
-        struct lambda_data *this_lambda = term->data.var;
-        XASSERT(this_lambda);
-
-        return lambda == this_lambda ? true : false;
-    }
+    case LAMBDA_TERM_VAR: return lambda == term->data.var;
     case LAMBDA_TERM_CELL: return 0;
     case LAMBDA_TERM_UNARY_CALL:
         return count_binder_usage(term->data.u_call.rand, lambda);
@@ -3281,9 +3294,15 @@ of_lambda_term(
         const uint64_t nvars = count_binder_usage(body, tlambda);
         uint64_t **dup_ports = NULL;
         if (0 == nvars) {
+            // This is lambda that "garbage-collects" its argument.
             const struct node eraser = alloc_node(graph, SYMBOL_ERASER);
             connect_ports(&lambda.ports[1], &eraser.ports[0]);
+        } else if (1 == nvars && !is_identity_lambda(term)) {
+            // This is a linear non-self-referential lambda.
+            dup_ports = xmalloc(sizeof dup_ports[0] * 1);
+            dup_ports[0] = &lambda.ports[1];
         } else {
+            // The worst case: this is a non-linear lambda.
             dup_ports = build_duplicator_tree(graph, &lambda.ports[1], nvars);
         }
         tlambda->dup_ports = dup_ports;
