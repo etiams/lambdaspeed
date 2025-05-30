@@ -707,6 +707,38 @@ scott_singleton(void) {
     return lambda(x, applicator(applicator(scott_cons(), var(x)), scott_nil()));
 }
 
+static struct lambda_term *
+scott_sum_list(void) {
+    struct lambda_term *rec, *list, *x, *xs;
+
+    // clang-format off
+    return fix(lambda(rec, lambda(list,
+        applicator(
+            applicator(var(list), cell(0)),
+            lambda(x, lambda(xs,
+                binary_call(add, var(x), applicator(var(rec), var(xs)))))))));
+    // clang-format on
+}
+
+static struct lambda_term *
+scott_list_1_2_3_4_5(void) {
+    return applicator(
+        applicator(scott_cons(), cell(1)),
+        applicator(
+            applicator(scott_cons(), cell(2)),
+            applicator(
+                applicator(scott_cons(), cell(3)),
+                applicator(
+                    applicator(scott_cons(), cell(4)),
+                    applicator(
+                        applicator(scott_cons(), cell(5)), scott_nil())))));
+}
+
+static struct lambda_term *
+scott_sum_list_test(void) {
+    return applicator(scott_sum_list(), scott_list_1_2_3_4_5());
+}
+
 // clang-format off
 static uint64_t less_than_or_equal(const uint64_t x, const uint64_t y)
     { return x <= y; }
@@ -1267,6 +1299,7 @@ main(void) {
     TEST_CASE(
         scott_three_successor_predecessor2x_test,
         "(λ (λ (1 (λ (λ (1 (λ (λ 0))))))))");
+    TEST_CASE(scott_sum_list_test, "cell[15]");
     TEST_CASE(scott_insertion_sort_test, "cell[113450]");
     TEST_CASE(scott_tree_sum_test, "cell[10]");
     TEST_CASE(scott_tree_map_and_sum_test, "cell[20]");

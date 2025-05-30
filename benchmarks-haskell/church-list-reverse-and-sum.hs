@@ -1,24 +1,58 @@
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+import Interpreter
 
-{-# HLINT ignore "Redundant lambda" #-}
+churchNil :: Term
+churchNil = Lambda (Lambda (TVar 0))
 
-import Control.Monad.Fix (fix)
+churchCons :: Term
+churchCons =
+  Lambda
+    ( Lambda
+        ( Lambda
+            (Lambda (Apply (Apply (TVar 1) (TVar 3)) (Apply (Apply (TVar 2) (TVar 1)) (TVar 0))))
+        )
+    )
 
-churchNil = \f n -> n
+add :: Term
+add = BinaryOp (+)
 
-churchCons = \h t f n -> f h (t f n)
+churchSumList :: Term
+churchSumList =
+  Lambda
+    ( Apply (Apply (TVar 0) add) (Const 0)
+    )
 
-churchSumList = \list -> list (+) 0
+churchReverse :: Term
+churchReverse =
+  Lambda
+    ( Apply
+        ( Apply
+            (TVar 0)
+            ( Lambda
+                ( Lambda
+                    ( Lambda
+                        ( Lambda
+                            ( Apply
+                                (Apply (TVar 2) (TVar 1))
+                                (Apply (Apply (TVar 1) (TVar 3)) (TVar 0))
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        churchNil
+    )
 
-churchReverse = \xs -> xs (\x cont f n -> cont f (f x n)) churchNil
-
+generateList :: Int -> Term
 generateList n = go n churchNil
   where
     go 0 acc = acc
-    go i acc = go (i - 1) (churchCons (i - 1) acc)
+    go i acc = go (i - 1) (Apply (Apply churchCons (Const (i - 1))) acc)
 
-benchmarkTerm :: Int
-benchmarkTerm = churchSumList (churchReverse (generateList 3000))
+benchmarkTerm :: Term
+benchmarkTerm = Apply churchSumList (Apply churchReverse (generateList 100))
 
 main :: IO ()
-main = print benchmarkTerm
+main = case denote [] benchmarkTerm of
+  VConst n -> print n
+  _ -> error "Expected a constant result!"

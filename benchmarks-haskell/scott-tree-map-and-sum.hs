@@ -1,42 +1,75 @@
-{-# HLINT ignore "Use id" #-}
-{-# HLINT ignore "Avoid lambda" #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE RankNTypes #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-import Control.Monad.Fix (fix)
+import Interpreter
 
-newtype ScottTree a = ScottTree (forall r. (a -> r) -> (ScottTree a -> ScottTree a -> r) -> r)
+scottLeaf :: Term
+scottLeaf = Lambda (Lambda (Lambda (Apply (TVar 1) (TVar 2))))
 
-scottLeaf :: a -> ScottTree a
-scottLeaf v = ScottTree (\leaf node -> leaf v)
+scottNode :: Term
+scottNode =
+  Lambda (Lambda (Lambda (Lambda (Apply (Apply (TVar 0) (TVar 3)) (TVar 2)))))
 
-scottNode :: ScottTree a -> ScottTree a -> ScottTree a
-scottNode lhs rhs = ScottTree (\leaf node -> node lhs rhs)
+add :: Term
+add = BinaryOp (+)
 
-scottTreeSum :: ScottTree Int -> Int
-scottTreeSum = fix $ \rec tree ->
-  case tree of
-    ScottTree f ->
-      f
-        (\v -> v)
-        (\lhs rhs -> rec lhs + rec rhs)
+multiply :: Term
+multiply = BinaryOp (*)
 
-scottTreeMap :: (a -> b) -> ScottTree a -> ScottTree b
-scottTreeMap = fix $ \rec f tree ->
-  case tree of
-    ScottTree g ->
-      g
-        (\v -> scottLeaf (f v))
-        (\lhs rhs -> scottNode (rec f lhs) (rec f rhs))
+scottTreeSum :: Term
+scottTreeSum =
+  Fix
+    ( Lambda
+        ( Lambda
+            ( Apply
+                (Apply (TVar 0) (Lambda (TVar 0)))
+                ( Lambda
+                    ( Lambda
+                        (Apply (Apply add (Apply (TVar 3) (TVar 1))) (Apply (TVar 3) (TVar 0)))
+                    )
+                )
+            )
+        )
+    )
 
-generateTree :: Int -> ScottTree Int
+scottTreeMap :: Term
+scottTreeMap =
+  Fix
+    ( Lambda
+        ( Lambda
+            ( Lambda
+                ( Apply
+                    (Apply (TVar 0) (Lambda (Apply scottLeaf (Apply (TVar 2) (TVar 0)))))
+                    ( Lambda
+                        ( Lambda
+                            ( Apply
+                                (Apply scottNode (Apply (Apply (TVar 4) (TVar 3)) (TVar 1)))
+                                (Apply (Apply (TVar 4) (TVar 3)) (TVar 0))
+                            )
+                        )
+                    )
+                )
+            )
+        )
+    )
+
+doubleFunction :: Term
+doubleFunction = Lambda (Apply (Apply multiply (TVar 0)) (Const 2))
+
+generateTree :: Int -> Term
 generateTree = \case
-  1 -> scottLeaf 1
-  n -> scottNode (generateTree (n `div` 2)) (generateTree (n `div` 2))
+  1 -> Apply scottLeaf (Const 1)
+  n ->
+    Apply
+      (Apply scottNode (generateTree (n `div` 2)))
+      (generateTree (n `div` 2))
 
-benchmarkTerm :: Int
-benchmarkTerm = scottTreeSum (scottTreeMap (* 2) (generateTree 16384))
+benchmarkTerm :: Term
+benchmarkTerm =
+  Apply
+    scottTreeSum
+    (Apply (Apply scottTreeMap doubleFunction) (generateTree 16))
 
 main :: IO ()
-main = print benchmarkTerm
+main = case denote [] benchmarkTerm of
+  VConst n -> print n
+  _ -> error "Expected a constant result!"

@@ -1,16 +1,40 @@
-import Control.Monad.Fix (fix)
+import Interpreter
 
-ackermann :: Int -> Int -> Int
+isZero :: Term
+isZero = UnaryOp (\x -> if x == 0 then 1 else 0)
+
+incr :: Term
+incr = UnaryOp (+ 1)
+
+decr :: Term
+decr = UnaryOp (\x -> x - 1)
+
+ackermann :: Term
 ackermann =
-  fix
-    ( \rec m n ->
-        if m == 0
-          then n + 1
-          else
-            if n == 0
-              then rec (m - 1) 1
-              else rec (m - 1) (rec m (n - 1))
+  Fix
+    ( Lambda
+        ( Lambda
+            ( Lambda
+                ( IfThenElse
+                    (Apply isZero (TVar 1))
+                    (Apply incr (TVar 0))
+                    ( IfThenElse
+                        (Apply isZero (TVar 0))
+                        (Apply (Apply (TVar 2) (Apply decr (TVar 1))) (Const 1))
+                        ( Apply
+                            (Apply (TVar 2) (Apply decr (TVar 1)))
+                            (Apply (Apply (TVar 2) (TVar 1)) (Apply decr (TVar 0)))
+                        )
+                    )
+                )
+            )
+        )
     )
 
+benchmarkTerm :: Term
+benchmarkTerm = Apply (Apply ackermann (Const 3)) (Const 3)
+
 main :: IO ()
-main = print (ackermann 3 3)
+main = case denote [] benchmarkTerm of
+  VConst n -> print n
+  _ -> error "Expected a constant result!"

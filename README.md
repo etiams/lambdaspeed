@@ -2,7 +2,7 @@
 
 🚧 **WORK IN PROGRESS**
 
-_Optiscope_ is an efficient, Lévy-optimal implementation of the pure lambda calculus endowed with native function calls, if-then-else expressions, & a fixed-point operator.
+_Optiscope_ is an ~~efficient~~ (not yet), Lévy-optimal implementation of the pure lambda calculus endowed with native function calls, if-then-else expressions, & a fixed-point operator.
 
 Being the first public implementation of [Lambdascope] [^lambdascope] written in portable C99, it is also the first interaction net reducer capable of calling user-provided functions at native speed. Such a powerfull combination opens a new specialized programming paradigm suited for problems exhibiting both structural sharing & computational intensitie.
 
@@ -255,8 +255,8 @@ Total interactions: 252684083
 
 ```
 Benchmark 1: ./scott-insertion-sort
-  Time (mean ± σ):     11.244 s ±  0.082 s    [User: 10.539 s, System: 0.703 s]
-  Range (min … max):   11.168 s … 11.373 s    5 runs
+  Time (mean ± σ):     11.214 s ±  0.104 s    [User: 10.543 s, System: 0.671 s]
+  Range (min … max):   11.099 s … 11.345 s    5 runs
 ```
 
 <details>
