@@ -4,7 +4,7 @@
 
 _Optiscope_ is an ~~efficient~~ (not yet), Lévy-optimal implementation of the pure lambda calculus endowed with native function calls, if-then-else expressions, & a fixed-point operator.
 
-Being the first public implementation of [Lambdascope] [^lambdascope] written in portable C99, it is also the first interaction net reducer capable of calling user-provided functions at native speed. Such a powerfull combination opens a new specialized programming paradigm suited for problems exhibiting both structural sharing & computational intensitie.
+Being the first public implementation of [Lambdascope] [^lambdascope] written in portable C99, it is also the first interaction net reducer capable of calling user-provided functions at native speed. Such a seemingly unnatural combination opens a new specialized programming paradigm suited for problems exhibiting both structural sharing & computational intensitie.
 
 [Lambdascope]: https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=61042374787bf6514706b49a5a4f0b74996979a0
 
