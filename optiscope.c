@@ -1382,9 +1382,11 @@ free_node(const struct node node) {
             else COMMUTE(f, g);                                                \
             break;                                                             \
         case SYMBOL_LAMBDA:                                                    \
-            if (SYMBOL_APPLICATOR == gsym) BETA(g, f);                         \
-            else if (SYMBOL_FIX == gsym) FIX(g, f);                            \
-            else COMMUTE(f, g);                                                \
+            switch (gsym) {                                                    \
+            case SYMBOL_APPLICATOR: BETA(g, f); break;                         \
+            case SYMBOL_FIX: FIX(g, f); break;                                 \
+            default: COMMUTE(f, g);                                            \
+            }                                                                  \
             break;                                                             \
         case SYMBOL_CELL:                                                      \
             switch (gsym) {                                                    \
