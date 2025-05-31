@@ -3224,23 +3224,41 @@ build_delimiter_sequence(
 
 COMPILER_RETURNS_NONNULL COMPILER_NONNULL(1, 2) COMPILER_WARN_UNUSED_RESULT //
 static uint64_t **
+build_unary_duplicator(
+    struct context *const restrict graph,
+    uint64_t *const restrict binder_port) {
+    assert(graph);
+    assert(binder_port);
+
+    uint64_t **const ports = xmalloc(sizeof ports[0] * 1);
+
+    struct node dup = alloc_node(graph, SYMBOL_DUPLICATOR(UINT64_C(0)));
+    struct node eraser = alloc_node(graph, SYMBOL_ERASER);
+
+    ports[0] = &dup.ports[1];
+    connect_ports(&dup.ports[2], &eraser.ports[0]);
+    connect_ports(&dup.ports[0], binder_port);
+
+    return ports;
+}
+
+COMPILER_RETURNS_NONNULL COMPILER_NONNULL(1, 2) COMPILER_WARN_UNUSED_RESULT //
+static uint64_t **
 build_duplicator_tree(
     struct context *const restrict graph,
     uint64_t *const restrict binder_port,
     const uint64_t n) {
     assert(graph);
     assert(binder_port);
-    XASSERT(n >= 1);
+    XASSERT(n >= 2);
 
     uint64_t **const ports = xmalloc(sizeof ports[0] * n);
 
     struct node current = alloc_node(graph, SYMBOL_DUPLICATOR(UINT64_C(0)));
-    struct node eraser = alloc_node(graph, SYMBOL_ERASER);
-
     ports[0] = &current.ports[1];
-    connect_ports(&current.ports[2], &eraser.ports[0]);
+    ports[1] = &current.ports[2];
 
-    for (uint64_t i = 1; i < n; i++) {
+    for (uint64_t i = 2; i < n; i++) {
         const struct node dup =
             alloc_node(graph, SYMBOL_DUPLICATOR(UINT64_C(0)));
         ports[i] = &dup.ports[1];
@@ -3293,17 +3311,26 @@ of_lambda_term(
         connect_ports(&lambda.ports[0], output_port);
         const uint64_t nvars = count_binder_usage(body, tlambda);
         uint64_t **dup_ports = NULL;
-        if (0 == nvars) {
+        switch (nvars) {
+        case 0: {
             // This is lambda that "garbage-collects" its argument.
             const struct node eraser = alloc_node(graph, SYMBOL_ERASER);
             connect_ports(&lambda.ports[1], &eraser.ports[0]);
-        } else if (1 == nvars && !is_identity_lambda(term)) {
-            // This is a linear non-self-referential lambda.
-            dup_ports = xmalloc(sizeof dup_ports[0] * 1);
-            dup_ports[0] = &lambda.ports[1];
-        } else {
-            // The worst case: this is a non-linear lambda.
-            dup_ports = build_duplicator_tree(graph, &lambda.ports[1], nvars);
+            break;
+        }
+        case 1:
+            if (is_identity_lambda(term)) {
+                dup_ports = build_unary_duplicator(graph, &lambda.ports[1]);
+            } else {
+                // This is a linear non-self-referential lambda.
+                dup_ports = xmalloc(sizeof dup_ports[0] * 1);
+                dup_ports[0] = &lambda.ports[1];
+            }
+            break;
+        default:
+            // This is a non-linear lambda that needs a duplicator tree.
+            dup_ports = build_duplicator_tree(
+                graph, &lambda.ports[1], nvars /* >= 2 */);
         }
         tlambda->dup_ports = dup_ports;
         tlambda->lvl = lvl;

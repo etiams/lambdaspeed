@@ -207,21 +207,21 @@ Note: the benchmarks are many times slower than those in [`benchmarks-haskell/`]
 
 ```
 Benchmark 1: ./ackermann-of-3-3
-  Time (mean ± σ):     20.406 s ±  0.254 s    [User: 20.387 s, System: 0.017 s]
-  Range (min … max):   20.172 s … 20.836 s    5 runs
+  Time (mean ± σ):     12.828 s ±  0.426 s    [User: 12.813 s, System: 0.014 s]
+  Range (min … max):   12.370 s … 13.319 s    5 runs
 ```
 
 <details>
 <summary>Interactions count</summary>
 
 ```
-Annihilation interactions: 73115
-Commutation interactions: 705892
-Beta interactions: 8
+Annihilation interactions: 75012
+Commutation interactions: 651067
+Beta interactions: 22
 Native function calls: 7232
 If-then-elses: 3668
-Fixpoints: 4
-Total interactions: 789919
+Fixpoints: 11
+Total interactions: 737012
 ```
 
 </details>
@@ -230,21 +230,21 @@ Total interactions: 789919
 
 ```
 Benchmark 1: ./church-list-reverse-and-sum
-  Time (mean ± σ):      2.756 s ±  0.050 s    [User: 2.549 s, System: 0.206 s]
-  Range (min … max):    2.703 s …  2.813 s    5 runs
+  Time (mean ± σ):      2.367 s ±  0.015 s    [User: 2.268 s, System: 0.099 s]
+  Range (min … max):    2.352 s …  2.389 s    5 runs
 ```
 
 <details>
 <summary>Interactions count</summary>
 
 ```
-Annihilation interactions: 9138007
-Commutation interactions: 108354052
+Annihilation interactions: 9117010
+Commutation interactions: 99282062
 Beta interactions: 30006
 Native function calls: 6000
 If-then-elses: 0
 Fixpoints: 0
-Total interactions: 117528065
+Total interactions: 108435078
 ```
 
 </details>
@@ -278,21 +278,21 @@ Total interactions: 173222119
 
 ```
 Benchmark 1: ./scott-tree-map-and-sum
-  Time (mean ± σ):      1.516 s ±  0.013 s    [User: 1.400 s, System: 0.115 s]
-  Range (min … max):    1.496 s …  1.529 s    5 runs
+  Time (mean ± σ):      1.453 s ±  0.013 s    [User: 1.344 s, System: 0.108 s]
+  Range (min … max):    1.439 s …  1.470 s    5 runs
 ```
 
 <details>
 <summary>Interactions count</summary>
 
 ```
-Annihilation interactions: 8994656
-Commutation interactions: 44219835
-Beta interactions: 294914
+Annihilation interactions: 9412171
+Commutation interactions: 46968185
+Beta interactions: 294992
 Native function calls: 65534
 If-then-elses: 0
-Fixpoints: 6
-Total interactions: 53574945
+Fixpoints: 58
+Total interactions: 56740940
 ```
 
 </details>
