@@ -22,9 +22,7 @@ Following the classical example (here borrowed from [^lamping]):
        (λw. (h (w (λy. y)))))))
 ```
 
-This term containes two redexes: the outer redex `((λg. ...) (λh. ...))` & the inner redex `((λf. ...) (λw. ...))`.
-
-If the outer redex is to be reduced first, which follows the normal order reduction strategy, the term will reduce in a single step to (`G` is a metavariable):
+This term containes two redexes: the outer redex `((λg. ...) (λh. ...))` & the inner redex `((λf. ...) (λw. ...))`. If the outer redex is to be reduced first, which follows the normal order reduction strategy, the term will reduce in a single step to:
 
 ```
 G := (λh. ((λf. (f (f (λz. z))))
