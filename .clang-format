@@ -9,7 +9,7 @@ AlignAfterOpenBracket: AlwaysBreak
 AlignConsecutiveMacros:
   Enabled: true
 AllowAllArgumentsOnNextLine: true
-AllowAllParametersOfDeclarationOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: true
 AllowShortBlocksOnASingleLine: Always
 AllowShortCaseLabelsOnASingleLine: true
 AllowShortEnumsOnASingleLine: true
@@ -36,6 +36,7 @@ AttributeMacros: [
     COMPILER_NONNULL,
     COMPILER_CONST,
     COMPILER_PURE,
+    STATIC_ASSERT,
   ]
 ForEachMacros: [
     ITERATE_ONCE, #

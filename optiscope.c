@@ -266,8 +266,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 extern void
 optiscope_redirect_stream(
-    FILE *const restrict source,
-    FILE *const restrict destination) {
+    FILE *const restrict source, FILE *const restrict destination) {
     assert(source);
     assert(destination);
 
@@ -341,12 +340,8 @@ PRINTER(panic, stderr, abort())
 #define IS_PRINCIPAL_PORT(port) (0 == DECODE_OFFSET_METADATA(port))
 
 STATIC_ASSERT(CHAR_BIT == 8, "The byte width must be 8 bits!");
-STATIC_ASSERT(
-    sizeof(uint64_t *) == sizeof(uint64_t),
-    "The machine word width must be 64 bits!");
-STATIC_ASSERT(
-    sizeof(uint64_t (*)(uint64_t value)) <= sizeof(uint64_t),
-    "Function handles must fit in `uint64_t`!");
+STATIC_ASSERT(sizeof(uint64_t *) == sizeof(uint64_t), "The machine word width must be 64 bits!");
+STATIC_ASSERT(sizeof(uint64_t (*)(uint64_t value)) <= sizeof(uint64_t), "Function handles must fit in `uint64_t`!");
 
 #define MIN_REGULAR_SYMBOL   UINT64_C(0)
 #define MAX_REGULAR_SYMBOL   UINT64_C(11)
@@ -356,12 +351,8 @@ STATIC_ASSERT(
 #define MAX_PORTS            UINT64_C(4)
 #define MAX_AUXILIARY_PORTS  (MAX_PORTS - 1)
 
-STATIC_ASSERT(
-    UINT64_MAX == UINT64_C(18446744073709551615),
-    "`uint64_t` must have the expected range of [0; 2^64 - 1]!");
-STATIC_ASSERT(
-    UINT64_MAX == MAX_DELIMITER_INDEX,
-    "Every bit of a symbol must be used!");
+STATIC_ASSERT(UINT64_MAX == UINT64_C(18446744073709551615), "`uint64_t` must have the expected range of [0; 2^64 - 1]!");
+STATIC_ASSERT(UINT64_MAX == MAX_DELIMITER_INDEX, "Every bit of a symbol must be used!");
 
 #define SYMBOL_ROOT            UINT64_C(0)
 #define SYMBOL_GARBAGE         UINT64_C(1)
@@ -447,8 +438,7 @@ get_principal_port(uint64_t *const restrict port) {
 COMPILER_NONNULL(1, 2) COMPILER_HOT //
 inline static void
 connect_port_to(
-    uint64_t *const restrict port,
-    const uint64_t *const restrict another) {
+    uint64_t *const restrict port, const uint64_t *const restrict another) {
     assert(port);
     assert(another);
     XASSERT(port != another);
@@ -476,8 +466,7 @@ connect_ports(uint64_t *const restrict lhs, uint64_t *const restrict rhs) {
 COMPILER_CONST COMPILER_WARN_UNUSED_RESULT COMPILER_HOT //
 static int64_t
 symbol_index(const uint64_t symbol) {
-    STATIC_ASSERT(
-        INDEX_RANGE <= (uint64_t)INT64_MAX, "Indices must fit in `int64_t`!");
+    STATIC_ASSERT(INDEX_RANGE <= (uint64_t)INT64_MAX, "Indices must fit in `int64_t`!");
 
     switch (symbol) {
     case SYMBOL_ROOT:
@@ -808,9 +797,7 @@ struct node {
     uint64_t *ports;
 };
 
-STATIC_ASSERT(
-    sizeof(struct node) == sizeof(uint64_t *),
-    "`struct node` must be as tiny as a pointer!");
+STATIC_ASSERT(sizeof(struct node) == sizeof(uint64_t *), "`struct node` must be as tiny as a pointer!");
 
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_NONNULL(1) COMPILER_HOT
 COMPILER_FLATTEN //
@@ -1023,8 +1010,7 @@ unvisit_all(struct node_list *const restrict self) {
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT //
 static bool
 is_visited(
-    const struct node_list *const restrict self,
-    const struct node node) {
+    const struct node_list *const restrict self, const struct node node) {
     XASSERT(node.ports);
 
     ITERATE_LIST (iter, (struct node_list *)self) {
@@ -1485,8 +1471,7 @@ register_pair_if_active(
 COMPILER_NONNULL(1) COMPILER_HOT //
 static void
 register_node_if_active(
-    struct context *const restrict graph,
-    const struct node node) {
+    struct context *const restrict graph, const struct node node) {
     assert(graph);
     XASSERT(node.ports);
 
@@ -1570,9 +1555,7 @@ graphviz_node_xlabel(const struct node node) {
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_RETURNS_NONNULL //
 static const char *
 graphviz_edge_label(
-    const struct node node,
-    const uint8_t i,
-    const bool is_reading_back) {
+    const struct node node, const uint8_t i, const bool is_reading_back) {
     XASSERT(node.ports);
 
     static char buffer[16] = {0};
@@ -1606,24 +1589,16 @@ graphviz_edge_label(
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT //
 static uint8_t
 graphviz_edge_weight(
-    const struct node node,
-    const uint8_t i,
-    const bool is_reading_back) {
+    const struct node node, const uint8_t i, const bool is_reading_back) {
     if (is_active(node) && 0 == i) { return 3; }
 
     switch (node.ports[-1]) {
     case SYMBOL_APPLICATOR:
-        if ((is_reading_back ? 2 : 0) == i) {
-            return 5; // rator
-        }
-        if ((is_reading_back ? 1 : 2) == i) {
-            return 5; // rand
-        }
+        if ((is_reading_back ? 2 : 0) == i) return 5; // rator
+        if ((is_reading_back ? 1 : 2) == i) return 5; // rand
         break;
     case SYMBOL_LAMBDA:
-        if (2 == i) {
-            return 3; // body
-        }
+        if (2 == i) return 3; // body
         break;
     default:
         if (IS_DUPLICATOR(node.ports[-1]) && (1 == i || 2 == i)) {
@@ -1638,9 +1613,7 @@ graphviz_edge_weight(
 COMPILER_PURE COMPILER_WARN_UNUSED_RESULT COMPILER_RETURNS_NONNULL //
 static const char *
 graphviz_edge_tailport(
-    const struct node node,
-    const uint8_t i,
-    const bool is_reading_back) {
+    const struct node node, const uint8_t i, const bool is_reading_back) {
     XASSERT(node.ports);
 
     switch (node.ports[-1]) {
@@ -1787,8 +1760,7 @@ graphviz_commute_cluster(
 COMPILER_NONNULL(1, 2) //
 static void
 graphviz_beta_cluster(
-    const uint64_t *const restrict lhs,
-    const uint64_t *const restrict rhs) {
+    const uint64_t *const restrict lhs, const uint64_t *const restrict rhs) {
     assert(lhs), assert(rhs);
 
     // clang-format off
@@ -1819,8 +1791,7 @@ graphviz_beta_cluster(
 COMPILER_NONNULL(1, 2) //
 static void *
 mmap_graphviz_footer(
-    size_t *const restrict mmap_length,
-    char *const restrict mmap_backup_char) {
+    size_t *const restrict mmap_length, char *const restrict mmap_backup_char) {
     assert(mmap_length), assert(mmap_backup_char);
 
     IO_CALL(fflush, graphviz_footer_fp);
@@ -1965,8 +1936,7 @@ struct graphviz_context {
 COMPILER_NONNULL(1) //
 static void
 graphviz_draw_node(
-    struct graphviz_context *const restrict ctx,
-    const struct node node) {
+    struct graphviz_context *const restrict ctx, const struct node node) {
     assert(ctx), XASSERT(ctx->stream);
     XASSERT(node.ports);
 
@@ -2215,8 +2185,7 @@ sweep(const struct context *const restrict graph, const bool root_found) {
 COMPILER_NONNULL(1) //
 static void
 collect_garbage(
-    const struct context *const restrict graph,
-    const struct node node) {
+    const struct context *const restrict graph, const struct node node) {
     assert(graph);
     XASSERT(graph->phase < PHASE_UNWIND);
     XASSERT(node.ports);
@@ -2784,8 +2753,7 @@ cleanup:
 COMPILER_NONNULL(1) COMPILER_HOT //
 static struct node_list *
 iterate_nodes(
-    const struct context *const graph,
-    const struct symbol_range range) {
+    const struct context *const graph, const struct symbol_range range) {
     assert(graph);
     XASSERT(graph->root.ports);
 
@@ -2851,8 +2819,7 @@ unwind(struct context *const restrict graph) {
 COMPILER_NONNULL(1) //
 static void
 register_active_scopes(
-    struct context *const restrict graph,
-    struct node_list *new_scopes) {
+    struct context *const restrict graph, struct node_list *new_scopes) {
     assert(graph);
 
     CONSUME_LIST (iter, new_scopes) {
@@ -2925,9 +2892,7 @@ loop_cut(struct context *const restrict graph) {
 COMPILER_NONNULL(1) //
 static void
 to_lambda_string(
-    FILE *const restrict stream,
-    const uint64_t i,
-    const struct node node) {
+    FILE *const restrict stream, const uint64_t i, const struct node node) {
     assert(stream);
     XASSERT(node.ports);
 
@@ -3056,8 +3021,7 @@ prelambda(void) {
 
 extern LambdaTerm
 link_lambda_body(
-    const restrict LambdaTerm binder,
-    const restrict LambdaTerm body) {
+    const restrict LambdaTerm binder, const restrict LambdaTerm body) {
     assert(binder), assert(body);
 
     binder->data.lambda.body = body;
@@ -3088,8 +3052,7 @@ cell(const uint64_t value) {
 
 extern LambdaTerm
 unary_call(
-    uint64_t (*const function)(uint64_t),
-    const restrict LambdaTerm rand) {
+    uint64_t (*const function)(uint64_t), const restrict LambdaTerm rand) {
     assert(function);
     assert(rand);
 
