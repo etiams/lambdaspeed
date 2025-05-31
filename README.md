@@ -199,7 +199,7 @@ Mathematically, our implementation follows the Lambdascope formalism [^lambdasco
 
 </details>
 
-Note: the benchmarks are many times slower than those in [`benchmarks-haskell/`](benchmarks-haskell/). Investigate the cause.
+TODO: the benchmarks are many times slower than those in [`benchmarks-haskell/`](benchmarks-haskell/) & [`benchmarks-ocaml/`](benchmarks-ocaml/). Investigate the cause.
 
 ### [Ackermann of (3, 3)](benchmarks/ackermann-of-3-3.c)
 

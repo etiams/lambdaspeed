@@ -67,7 +67,7 @@ benchmarkTerm :: Term
 benchmarkTerm =
   Apply
     scottTreeSum
-    (Apply (Apply scottTreeMap doubleFunction) (generateTree 16))
+    (Apply (Apply scottTreeMap doubleFunction) (generateTree 16384))
 
 main :: IO ()
 main = case denote [] benchmarkTerm of

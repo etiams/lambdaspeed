@@ -50,7 +50,7 @@ generateList n = go n churchNil
     go i acc = go (i - 1) (Apply (Apply churchCons (Const (i - 1))) acc)
 
 benchmarkTerm :: Term
-benchmarkTerm = Apply churchSumList (Apply churchReverse (generateList 100))
+benchmarkTerm = Apply churchSumList (Apply churchReverse (generateList 3000))
 
 main :: IO ()
 main = case denote [] benchmarkTerm of
